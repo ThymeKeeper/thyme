@@ -1,0 +1,19 @@
+[package]
+name = "thyme"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.26"
+crossterm = { version = "0.27", features = ["event-stream"] }
+ropey = "1.6"
+tokio = { version = "1.0", features = ["full"] }
+tower-lsp = "0.20"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+anyhow = "1.0"
+futures = "0.3"
+lsp-types = "0.95"
+regex = "1.10"
+dirs = "5.0"
