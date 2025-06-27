@@ -5,8 +5,8 @@ mod buffer;
 mod config;
 mod editor;
 mod events;
-mod lsp;
 mod syntax;
+// mod sql_analyzer; // REMOVED - not needed for syntax highlighting
 mod ui;
 
 use anyhow::Result;

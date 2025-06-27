@@ -4,16 +4,38 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ratatui = "0.26"
-crossterm = { version = "0.27", features = ["event-stream"] }
-ropey = "1.6"
-tokio = { version = "1.0", features = ["full"] }
-tower-lsp = "0.20"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-toml = "0.8"
+# Core dependencies
 anyhow = "1.0"
+tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
-lsp-types = "0.95"
-regex = "1.10"
+ropey = "1.6"
+
+# Terminal UI
+ratatui = "0.28"
+crossterm = "0.28"
+
+# Configuration
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
 dirs = "5.0"
+
+# SQL parsing (REMOVED - not needed for syntax highlighting)
+# sqlparser = "0.56"
+
+# Tree-sitter - use a single version
+tree-sitter = "0.20.10"
+
+# Language parsers for tree-sitter 0.20
+tree-sitter-rust = "0.20.4"
+tree-sitter-python = "0.20.4"
+tree-sitter-javascript = "0.20.4"
+tree-sitter-bash = "0.20.5"
+tree-sitter-json = "0.20.2"
+tree-sitter-toml = "0.20.0"
+
+# Build dependencies for compiling tree-sitter-sql from source
+[build-dependencies]
+cc = "1.0"
+
+[dev-dependencies]
+# Add any test dependencies here if needed

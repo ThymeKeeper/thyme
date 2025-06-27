@@ -2,10 +2,10 @@
 
 use crate::{buffer::Buffer, config::Config, editor::Editor, syntax::TokenType};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Margin, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
 
 pub struct Ui;
@@ -24,7 +24,6 @@ impl Ui {
     }
 
     pub fn get_content_width(&self, config: &Config) -> usize {
-        // Get terminal size and calculate content width consistently
         let terminal_width = crossterm::terminal::size().map(|(w, _)| w as usize).unwrap_or(80);
         
         terminal_width
@@ -38,18 +37,23 @@ impl Ui {
             .direction(Direction::Vertical)
             .margin(1)
             .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
-            .split(f.size());
+            .split(f.area());
 
         // Main editor area
         self.draw_editor(f, chunks[0], editor, config);
 
         // Status line
         self.draw_status_line(f, chunks[1], editor, config);
+
+        // Draw language selection modal if active
+        if editor.language_selection_mode {
+            self.draw_language_selection_modal(f, editor);
+        }
     }
 
     fn draw_editor(&self, f: &mut ratatui::Frame, area: Rect, editor: &Editor, config: &Config) {
         if let Some(buffer) = editor.current_buffer() {
-            let editor_area = area.inner(&Margin {
+            let editor_area = area.inner(Margin {
                 horizontal: config.margins.horizontal,
                 vertical: config.margins.vertical,
             });
@@ -62,13 +66,17 @@ impl Ui {
                 buffer, editor, config, content_width, content_height
             );
 
-            // Convert to ratatui Lines
+            // Convert to ratatui Lines with tree-sitter syntax highlighting
             let lines: Vec<Line> = wrapped_lines.iter().map(|wl| {
                 self.apply_syntax_highlighting(wl.content.clone(), buffer, wl.logical_line)
             }).collect();
 
+            // Simple title based on language
+            let display_name = Buffer::get_language_display_name(&buffer.language);
+            let title = format!("Thyme Editor [{}]", display_name);
+
             let paragraph = Paragraph::new(lines)
-                .block(Block::default().borders(Borders::ALL).title("Editor"));
+                .block(Block::default().borders(Borders::ALL).title(title));
 
             f.render_widget(paragraph, editor_area);
 
@@ -79,13 +87,124 @@ impl Ui {
                 
                 if screen_x < editor_area.x + editor_area.width.saturating_sub(1) && 
                    screen_y < editor_area.y + editor_area.height.saturating_sub(1) {
-                    f.set_cursor(screen_x, screen_y);
+                    f.set_cursor_position((screen_x, screen_y));
                 }
             }
         } else {
-            let welcome = Paragraph::new("Welcome to TUI Editor\nPress Ctrl+O to open a file")
-                .block(Block::default().borders(Borders::ALL).title("Editor"));
+            let welcome = Paragraph::new(vec![
+                Line::from("Welcome to Thyme Editor"),
+                Line::from(""),
+                Line::from("Press Ctrl+O to open a file"),
+                Line::from(""),
+                Line::from("Supported languages with Tree-sitter syntax highlighting:"),
+                Line::from("• Rust (.rs)"),
+                Line::from("• Python (.py)"),
+                Line::from("• JavaScript/TypeScript (.js, .jsx, .ts, .tsx)"),
+                Line::from("• Bash (.sh, .bash)"),
+                Line::from("• JSON (.json)"),
+                Line::from("• SQL (.sql, .mysql, .pgsql, .sqlite)"),
+                Line::from("• TOML (.toml)"),
+                Line::from(""),
+                Line::from("Features:"),
+                Line::from("• Tree-sitter syntax highlighting for 7 languages"),
+                Line::from("• Word wrapping with proper cursor handling"),
+                Line::from("• Auto-save functionality"),
+                Line::from("• Configurable margins and keybindings"),
+                Line::from("• Language switching without file reload"),
+                Line::from(""),
+                Line::from("Keybindings:"),
+                Line::from("• F1/F2: Adjust vertical margins"),
+                Line::from("• F3/F4: Adjust horizontal margins"),
+                Line::from("• F5: Toggle word wrap"),
+                Line::from("• Ctrl+L: Change syntax highlighting language"),
+                Line::from("• Ctrl+S: Save"),
+                Line::from("• Ctrl+Q: Quit"),
+            ])
+            .block(Block::default().borders(Borders::ALL).title("Thyme Editor"));
+            
             f.render_widget(welcome, area);
+        }
+    }
+
+    // Draw language selection modal
+    fn draw_language_selection_modal(&self, f: &mut ratatui::Frame, editor: &Editor) {
+        if let Some((languages, selected_index)) = editor.get_language_selection_info() {
+            // Calculate modal size and position
+            let modal_width = 50;
+            let modal_height = languages.len() as u16 + 4; // +4 for borders and title
+            
+            let area = f.area();
+            let modal_area = Rect {
+                x: (area.width.saturating_sub(modal_width)) / 2,
+                y: (area.height.saturating_sub(modal_height)) / 2,
+                width: modal_width,
+                height: modal_height,
+            };
+
+            // Clear the background
+            f.render_widget(Clear, modal_area);
+
+            // Create language list items with numbering and tree-sitter version info
+            let items: Vec<ListItem> = languages
+                .iter()
+                .enumerate()
+                .map(|(i, &lang)| {
+                    let display_name = Buffer::get_language_display_name(lang);
+                    let number = i + 1;
+                    
+                    // Add tree-sitter version indication
+                    let ts_version = match lang {
+                        "text" => " (no highlighting)",
+                        _ => " (tree-sitter)",
+                    };
+                    
+                    let text = format!("{}. {}{}", number, display_name, ts_version);
+                    
+                    if i == selected_index {
+                        ListItem::new(text).style(
+                            Style::default()
+                                .bg(Color::Blue)
+                                .fg(Color::White)
+                                .add_modifier(Modifier::BOLD)
+                        )
+                    } else {
+                        ListItem::new(text)
+                    }
+                })
+                .collect();
+
+            // Create the list widget
+            let list = List::new(items)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Select Language (↑↓ to navigate, Enter to select, Esc to cancel)")
+                        .style(Style::default().bg(Color::Black))
+                )
+                .style(Style::default().fg(Color::White));
+
+            f.render_widget(list, modal_area);
+
+            // Add instruction text at the bottom of the modal
+            let instruction_area = Rect {
+                x: modal_area.x + 1,
+                y: modal_area.y + modal_area.height - 2,
+                width: modal_area.width - 2,
+                height: 1,
+            };
+
+            let current_lang = editor.current_buffer()
+                .map(|b| b.language.as_str())
+                .unwrap_or("text");
+            
+            let current_display = Buffer::get_language_display_name(current_lang);
+            let instruction = Paragraph::new(
+                format!("Current: {} | Press 1-{} for quick select", current_display, languages.len())
+            )
+            .style(Style::default().fg(Color::Gray))
+            .alignment(Alignment::Center);
+
+            f.render_widget(instruction, instruction_area);
         }
     }
 
@@ -119,7 +238,7 @@ impl Ui {
                 vec![(line_text_for_display.to_string(), 0)]
             };
 
-            for (segment_idx, (wrapped_content, start_col)) in line_wrapped.iter().enumerate() {
+            for (_segment_idx, (wrapped_content, start_col)) in line_wrapped.iter().enumerate() {
                 let end_col = start_col + wrapped_content.chars().count();
                 
                 wrapped_lines.push(WrappedLine {
@@ -164,7 +283,6 @@ impl Ui {
     }
 
     fn wrap_line(&self, text: &str, width: usize) -> Vec<(String, usize)> {
-        // Use the standalone function to avoid borrowing issues
         wrap_line_simple(text, width)
     }
 
@@ -172,24 +290,42 @@ impl Ui {
         if let Some(tokens) = buffer.syntax_highlighter.get_line_tokens(line_idx) {
             let mut spans = Vec::new();
             let mut last_end = 0;
+            let text_len = text.len();
 
             for token in tokens {
-                // Add unstyled text before token
-                if token.start > last_end {
-                    spans.push(Span::raw(text[last_end..token.start].to_string()));
+                // Ensure token positions are within bounds
+                let token_start = token.start.min(text_len);
+                let token_end = token.end.min(text_len);
+                
+                // Skip invalid tokens
+                if token_start >= token_end || token_start > text_len {
+                    continue;
                 }
 
-                // Add styled token
-                let token_text = &text[token.start..token.end];
-                let style = self.get_token_style(&token.token_type);
-                spans.push(Span::styled(token_text.to_string(), style));
+                // Add unstyled text before token
+                if token_start > last_end && last_end < text_len {
+                    let slice_end = token_start.min(text_len);
+                    if let Some(text_slice) = text.get(last_end..slice_end) {
+                        spans.push(Span::raw(text_slice.to_string()));
+                    }
+                }
 
-                last_end = token.end;
+                // Add styled token with bounds checking
+                if let Some(token_text) = text.get(token_start..token_end) {
+                    let style = self.get_token_style(&token.token_type);
+                    spans.push(Span::styled(token_text.to_string(), style));
+                    last_end = token_end;
+                } else {
+                    // If token is out of bounds, skip it
+                    continue;
+                }
             }
 
             // Add remaining unstyled text
-            if last_end < text.len() {
-                spans.push(Span::raw(text[last_end..].to_string()));
+            if last_end < text_len {
+                if let Some(remaining_text) = text.get(last_end..) {
+                    spans.push(Span::raw(remaining_text.to_string()));
+                }
             }
 
             Line::from(spans)
@@ -205,9 +341,16 @@ impl Ui {
             TokenType::Comment => Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC),
             TokenType::Number => Style::default().fg(Color::Cyan),
             TokenType::Operator => Style::default().fg(Color::Yellow),
-            TokenType::Identifier => Style::default().fg(Color::White),
+            TokenType::Identifier | TokenType::Variable => Style::default().fg(Color::White),
             TokenType::Type => Style::default().fg(Color::Magenta),
             TokenType::Function => Style::default().fg(Color::Blue),
+            TokenType::Property => Style::default().fg(Color::Cyan),
+            TokenType::Parameter => Style::default().fg(Color::LightBlue),
+            TokenType::Constant => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            TokenType::Namespace => Style::default().fg(Color::Magenta),
+            TokenType::Punctuation => Style::default().fg(Color::Gray),
+            TokenType::Tag => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            TokenType::Attribute => Style::default().fg(Color::Yellow),
             TokenType::Normal => Style::default(),
         }
     }
@@ -232,8 +375,13 @@ impl Ui {
             // Cursor position
             status_text.push_str(&format!("{}:{} ", buffer.cursor.line + 1, buffer.cursor.column + 1));
 
-            // Language
-            status_text.push_str(&format!("[{}] ", buffer.language));
+            // Language with tree-sitter indicator
+            let display_name = Buffer::get_language_display_name(&buffer.language);
+            let ts_indicator = match buffer.language.as_str() {
+                "text" => "TXT",          // No highlighting
+                _ => "TS",                // Tree-sitter supported
+            };
+            status_text.push_str(&format!("[{}|{}] ", display_name, ts_indicator));
         }
 
         // Editor settings
@@ -242,6 +390,13 @@ impl Ui {
         }
 
         status_text.push_str(&format!("M:{}x{}", config.margins.horizontal, config.margins.vertical));
+
+        // Language selection hint
+        if editor.language_selection_mode {
+            status_text.push_str(" | LANGUAGE SELECTION MODE");
+        } else {
+            status_text.push_str(" | Ctrl+L: Change Language");
+        }
 
         let status = Paragraph::new(status_text)
             .style(Style::default().bg(Color::Blue).fg(Color::White));

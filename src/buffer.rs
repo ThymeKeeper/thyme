@@ -59,7 +59,7 @@ impl Buffer {
         
         let mut buffer = Self {
             rope,
-            cursor: Cursor::new(), // Fresh cursor with preferred_column = 0
+            cursor: Cursor::new(),
             file_path: Some(path),
             dirty: false,
             language: language.clone(),
@@ -72,11 +72,51 @@ impl Buffer {
         Ok(buffer)
     }
 
+    // Method to change the syntax highlighting language
+    pub fn set_language(&mut self, language: &str) {
+        if self.language != language {
+            self.language = language.to_string();
+            self.syntax_highlighter.set_language(language);
+            self.needs_syntax_update = true;
+            // Force immediate update for visual feedback
+            self.syntax_highlighter.update(&self.rope);
+            self.needs_syntax_update = false;
+        }
+    }
+
+    // Get list of supported languages
+    pub fn get_supported_languages() -> Vec<&'static str> {
+        vec![
+            "text",       // Plain text (no highlighting)
+            "rust",       // Rust (tree-sitter v0.20)
+            "python",     // Python (tree-sitter v0.20)
+            "javascript", // JavaScript/TypeScript (tree-sitter v0.20)
+            "bash",       // Bash/Shell (tree-sitter v0.20)
+            "json",       // JSON (tree-sitter v0.20)
+            "sql",        // SQL (tree-sitter v0.22)
+            "toml",       // TOML (tree-sitter v0.22)
+        ]
+    }
+
+    // Get a display name for a language
+    pub fn get_language_display_name(language: &str) -> &'static str {
+        match language {
+            "text" => "Plain Text",
+            "rust" => "Rust",
+            "python" => "Python", 
+            "javascript" => "JavaScript/TypeScript",
+            "bash" => "Bash/Shell",
+            "json" => "JSON",
+            "sql" => "SQL",
+            "toml" => "TOML",
+            _ => "Unknown",
+        }
+    }
+
     pub fn insert_char(&mut self, c: char) {
         let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column;
         self.rope.insert_char(char_idx, c);
         self.cursor.column += 1;
-        // Preferred visual column will be properly updated in editor.rs
         self.mark_dirty();
     }
 
@@ -85,7 +125,7 @@ impl Buffer {
         self.rope.insert_char(char_idx, '\n');
         self.cursor.line += 1;
         self.cursor.column = 0;
-        self.cursor.preferred_visual_column = 0; // Reset to start of new line
+        self.cursor.preferred_visual_column = 0;
         self.mark_dirty();
     }
 
@@ -94,7 +134,6 @@ impl Buffer {
             self.cursor.column -= 1;
             let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column;
             self.rope.remove(char_idx..char_idx + 1);
-            // Preferred visual column will be properly updated in editor.rs
             self.mark_dirty();
         } else if self.cursor.line > 0 {
             let prev_line_len = self.rope.line(self.cursor.line - 1).len_chars() - 1; // -1 for newline
@@ -102,7 +141,6 @@ impl Buffer {
             self.rope.remove(char_idx..char_idx + 1);
             self.cursor.line -= 1;
             self.cursor.column = prev_line_len;
-            // Preferred visual column will be properly updated in editor.rs
             self.mark_dirty();
         }
     }
@@ -112,12 +150,10 @@ impl Buffer {
         if self.cursor.column < line_len - 1 {
             let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column;
             self.rope.remove(char_idx..char_idx + 1);
-            // Don't update preferred visual column for forward delete
             self.mark_dirty();
         } else if self.cursor.line < self.rope.len_lines() - 1 {
             let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column;
             self.rope.remove(char_idx..char_idx + 1);
-            // Don't update preferred visual column for forward delete
             self.mark_dirty();
         }
     }
@@ -127,23 +163,21 @@ impl Buffer {
             self.cursor.column -= 1;
         } else if self.cursor.line > 0 {
             self.cursor.line -= 1;
-            // Move to the actual end of the previous line (after last visible character)
             let line_text = self.get_line_text(self.cursor.line);
             self.cursor.column = if line_text.ends_with('\n') {
-                line_text.len() - 1 // Position after last visible char, before newline
+                line_text.len() - 1
             } else {
-                line_text.len() // Position after last char if no newline
+                line_text.len()
             };
         }
-        // Preferred visual column will be updated in editor.rs
     }
 
     pub fn move_cursor_right(&mut self) {
         let line_text = self.get_line_text(self.cursor.line);
         let line_content_len = if line_text.ends_with('\n') {
-            line_text.len() - 1 // Length of visible content (excluding newline)
+            line_text.len() - 1
         } else {
-            line_text.len() // Length of content (no newline to exclude)
+            line_text.len()
         };
         
         if self.cursor.column < line_content_len {
@@ -152,7 +186,6 @@ impl Buffer {
             self.cursor.line += 1;
             self.cursor.column = 0;
         }
-        // Preferred visual column will be updated in editor.rs
     }
 
     pub fn move_cursor_up(&mut self) {
@@ -164,7 +197,6 @@ impl Buffer {
             } else {
                 line_text.len()
             };
-            // Use preferred visual column (will be properly calculated in editor.rs for word wrap)
             self.cursor.column = self.cursor.preferred_visual_column.min(line_content_len);
         }
     }
@@ -178,7 +210,6 @@ impl Buffer {
             } else {
                 line_text.len()
             };
-            // Use preferred visual column (will be properly calculated in editor.rs for word wrap)
             self.cursor.column = self.cursor.preferred_visual_column.min(line_content_len);
         }
     }
@@ -190,14 +221,11 @@ impl Buffer {
 
     pub fn move_cursor_end(&mut self) {
         let line_text = self.get_line_text(self.cursor.line);
-        // Move to the end of visible content (after last visible character)
         self.cursor.column = if line_text.ends_with('\n') {
-            line_text.len() - 1 // Position after last visible char, before newline
+            line_text.len() - 1
         } else {
-            line_text.len() // Position after last char if no newline
+            line_text.len()
         };
-        // Note: preferred_visual_column will be updated properly in editor.rs when needed
-        // For simple cases, just use the logical column
         self.cursor.preferred_visual_column = self.cursor.column;
     }
 
@@ -205,6 +233,7 @@ impl Buffer {
         self.dirty = true;
         self.last_change = Some(Instant::now());
         self.needs_syntax_update = true;
+        self.syntax_highlighter.mark_dirty();
     }
 
     pub fn save(&mut self, path: Option<PathBuf>) -> Result<()> {
@@ -218,7 +247,6 @@ impl Buffer {
     }
 
     pub fn should_auto_save(&self, config: &Config) -> bool {
-        // Don't auto-save if there's no file path
         if self.file_path.is_none() {
             return false;
         }
@@ -253,10 +281,7 @@ impl Buffer {
         }
     }
 
-    /// Reset the preferred visual column to the current visual position
-    /// This should be called when layout changes (terminal resize, margin changes, word wrap toggle)
     pub fn reset_preferred_column(&mut self) {
-        // This will be properly calculated in editor.rs based on visual position
         self.cursor.preferred_visual_column = self.cursor.column;
     }
 }
@@ -267,9 +292,11 @@ fn detect_language(path: &PathBuf) -> String {
             "rs" => "rust".to_string(),
             "py" => "python".to_string(),
             "js" | "jsx" => "javascript".to_string(),
-            "sql" => "sql".to_string(),
+            "ts" | "tsx" => "javascript".to_string(),
             "sh" | "bash" => "bash".to_string(),
-            "xml" | "html" | "xhtml" => "xml".to_string(),
+            "json" => "json".to_string(),
+            "toml" => "toml".to_string(),
+            "sql" | "mysql" | "pgsql" | "sqlite" => "sql".to_string(),
             _ => "text".to_string(),
         }
     } else {

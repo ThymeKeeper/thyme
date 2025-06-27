@@ -20,6 +20,8 @@ pub struct KeyBindings {
     pub increase_horizontal_margin: SerializableKeyEvent,
     pub decrease_horizontal_margin: SerializableKeyEvent,
     pub toggle_word_wrap: SerializableKeyEvent,
+    // NEW: Language selection keybinding
+    pub language_selection: SerializableKeyEvent,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -58,6 +60,11 @@ impl Default for Config {
                     code: "F5".to_string(),
                     modifiers: vec![],
                 },
+                // NEW: Default language selection to Ctrl+L
+                language_selection: SerializableKeyEvent {
+                    code: "l".to_string(),
+                    modifiers: vec!["ctrl".to_string()],
+                },
             },
             margins: Margins {
                 vertical: 1,
@@ -75,7 +82,16 @@ impl Config {
         
         if config_path.exists() {
             let content = std::fs::read_to_string(config_path)?;
-            Ok(toml::from_str(&content)?)
+            // Try to deserialize, but if it fails (e.g., due to new fields), 
+            // fall back to default and save it
+            match toml::from_str(&content) {
+                Ok(config) => Ok(config),
+                Err(_) => {
+                    let config = Self::default();
+                    config.save()?;
+                    Ok(config)
+                }
+            }
         } else {
             let config = Self::default();
             config.save()?;

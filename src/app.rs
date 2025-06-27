@@ -4,8 +4,8 @@ use crate::{
     config::Config,
     editor::Editor,
     events::{Event, EventHandler},
-    lsp::LspManager,
     ui::Ui,
+    buffer::Buffer,
 };
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -15,19 +15,17 @@ use std::{path::PathBuf, time::Instant};
 pub struct App {
     pub editor: Editor,
     pub config: Config,
-    pub lsp_manager: LspManager,
     pub ui: Ui,
     pub event_handler: EventHandler,
     pub running: bool,
     pub last_save_check: Instant,
-    pub last_terminal_size: (u16, u16), // Track terminal size changes
+    pub last_terminal_size: (u16, u16),
 }
 
 impl App {
     pub async fn new() -> Result<Self> {
         let config = Config::load()?;
         let editor = Editor::new();
-        let lsp_manager = LspManager::new().await?;
         let ui = Ui::new();
         let event_handler = EventHandler::new()?;
 
@@ -36,7 +34,6 @@ impl App {
         Ok(Self {
             editor,
             config,
-            lsp_manager,
             ui,
             event_handler,
             running: true,
@@ -78,9 +75,6 @@ impl App {
     async fn handle_event(&mut self, event: Event) -> Result<()> {
         match event {
             Event::Key(key) => self.handle_key_event(key).await?,
-            Event::Lsp(lsp_event) => {
-                self.lsp_manager.handle_event(lsp_event).await?;
-            }
             Event::Tick => {
                 // Update syntax highlighting if needed
                 if let Some(buffer) = self.editor.current_buffer_mut() {
@@ -92,6 +86,11 @@ impl App {
     }
 
     async fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
+        // NEW: Handle language selection mode first
+        if self.editor.language_selection_mode {
+            return self.handle_language_selection_key(key).await;
+        }
+
         // Handle custom keybindings first
         if self.handle_custom_keybindings(key).await? {
             return Ok(());
@@ -111,6 +110,7 @@ impl App {
             KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 // TODO: Implement file open dialog
             }
+            // Language selection mode trigger is handled in custom keybindings
             KeyCode::Left => self.editor.move_cursor_left(content_width),
             KeyCode::Right => self.editor.move_cursor_right(content_width),
             KeyCode::Up => self.editor.move_cursor_up(self.config.word_wrap, content_width),
@@ -127,6 +127,41 @@ impl App {
             _ => {}
         }
 
+        Ok(())
+    }
+
+    // NEW: Handle keys when in language selection mode
+    async fn handle_language_selection_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Up => {
+                self.editor.language_selection_up();
+            }
+            KeyCode::Down => {
+                self.editor.language_selection_down();
+            }
+            KeyCode::Enter => {
+                self.editor.apply_selected_language();
+            }
+            KeyCode::Esc => {
+                self.editor.exit_language_selection_mode();
+            }
+            KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                // Allow quit even in language selection mode
+                self.running = false;
+            }
+            // NEW: Quick language selection with number keys
+            KeyCode::Char(c) if c.is_ascii_digit() => {
+                let digit = c.to_digit(10).unwrap() as usize;
+                let languages = Buffer::get_supported_languages();
+                if digit > 0 && digit <= languages.len() {
+                    self.editor.language_selection_index = digit - 1;
+                    self.editor.apply_selected_language();
+                }
+            }
+            _ => {
+                // Ignore other keys in language selection mode
+            }
+        }
         Ok(())
     }
 
@@ -159,22 +194,25 @@ impl App {
 
         if key == keybindings.increase_horizontal_margin {
             self.config.margins.horizontal = self.config.margins.horizontal.saturating_add(1);
-            // Reset preferred column since content width changed
             self.reset_preferred_column();
             return Ok(true);
         }
 
         if key == keybindings.decrease_horizontal_margin {
             self.config.margins.horizontal = self.config.margins.horizontal.saturating_sub(1);
-            // Reset preferred column since content width changed
             self.reset_preferred_column();
             return Ok(true);
         }
 
         if key == keybindings.toggle_word_wrap {
             self.config.word_wrap = !self.config.word_wrap;
-            // Reset preferred column since word wrapping changed
             self.reset_preferred_column();
+            return Ok(true);
+        }
+
+        // NEW: Language selection keybinding
+        if key == keybindings.language_selection {
+            self.editor.enter_language_selection_mode();
             return Ok(true);
         }
 
@@ -200,7 +238,6 @@ impl App {
     fn check_terminal_resize(&mut self) {
         if let Ok(current_size) = crossterm::terminal::size() {
             if current_size != self.last_terminal_size {
-                // Terminal was resized, reset preferred column
                 self.reset_preferred_column();
                 self.last_terminal_size = current_size;
             }

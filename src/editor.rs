@@ -8,6 +8,9 @@ pub struct Editor {
     pub buffers: Vec<Buffer>,
     pub active_buffer: usize,
     pub viewport_line: usize,
+    // NEW: State for language selection mode
+    pub language_selection_mode: bool,
+    pub language_selection_index: usize,
 }
 
 impl Editor {
@@ -16,6 +19,8 @@ impl Editor {
             buffers: Vec::new(),
             active_buffer: 0,
             viewport_line: 0,
+            language_selection_mode: false,
+            language_selection_index: 0,
         }
     }
 
@@ -44,6 +49,81 @@ impl Editor {
             buffer.save(None)?;
         }
         Ok(())
+    }
+
+    // NEW: Enter language selection mode
+    pub fn enter_language_selection_mode(&mut self) {
+        if self.current_buffer().is_some() {
+            self.language_selection_mode = true;
+            self.language_selection_index = 0;
+            
+            // Set the current index to match the current language
+            if let Some(buffer) = self.current_buffer() {
+                let supported_languages = Buffer::get_supported_languages();
+                if let Some(pos) = supported_languages.iter().position(|&lang| lang == buffer.language) {
+                    self.language_selection_index = pos;
+                }
+            }
+        }
+    }
+
+    // NEW: Exit language selection mode
+    pub fn exit_language_selection_mode(&mut self) {
+        self.language_selection_mode = false;
+    }
+
+    // NEW: Navigate in language selection
+    pub fn language_selection_up(&mut self) {
+        if self.language_selection_mode {
+            let languages = Buffer::get_supported_languages();
+            if self.language_selection_index > 0 {
+                self.language_selection_index -= 1;
+            } else {
+                self.language_selection_index = languages.len() - 1;
+            }
+        }
+    }
+
+    pub fn language_selection_down(&mut self) {
+        if self.language_selection_mode {
+            let languages = Buffer::get_supported_languages();
+            if self.language_selection_index < languages.len() - 1 {
+                self.language_selection_index += 1;
+            } else {
+                self.language_selection_index = 0;
+            }
+        }
+    }
+
+    // NEW: Apply selected language
+    pub fn apply_selected_language(&mut self) -> bool {
+        if self.language_selection_mode {
+            let languages = Buffer::get_supported_languages();
+            if let Some(&selected_language) = languages.get(self.language_selection_index) {
+                if let Some(buffer) = self.current_buffer_mut() {
+                    buffer.set_language(selected_language);
+                }
+                self.language_selection_mode = false;
+                return true;
+            }
+        }
+        false
+    }
+
+    // NEW: Get current language selection info for UI
+    pub fn get_language_selection_info(&self) -> Option<(Vec<&'static str>, usize)> {
+        if self.language_selection_mode {
+            Some((Buffer::get_supported_languages(), self.language_selection_index))
+        } else {
+            None
+        }
+    }
+
+    // NEW: Change language directly (for programmatic use)
+    pub fn set_current_buffer_language(&mut self, language: &str) {
+        if let Some(buffer) = self.current_buffer_mut() {
+            buffer.set_language(language);
+        }
     }
 
     /// Update the preferred visual column based on the current cursor position (with content width)
