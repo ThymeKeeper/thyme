@@ -20,6 +20,8 @@ use std::io;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Thyme editor starting
+    
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();

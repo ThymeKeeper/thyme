@@ -1,7 +1,7 @@
 // src/app.rs
 
 use crate::{
-    config::Config,
+    config::{Config, Theme},
     editor::Editor,
     events::{Event, EventHandler},
     ui::Ui,
@@ -20,6 +20,7 @@ pub struct App {
     pub running: bool,
     pub last_save_check: Instant,
     pub last_terminal_size: (u16, u16),
+    pub saved_theme: Option<Theme>, // For theme preview
 }
 
 impl App {
@@ -39,6 +40,7 @@ impl App {
             running: true,
             last_save_check: Instant::now(),
             last_terminal_size,
+            saved_theme: None,
         })
     }
 
@@ -86,9 +88,14 @@ impl App {
     }
 
     async fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
-        // NEW: Handle language selection mode first
+        // Handle language selection mode first
         if self.editor.language_selection_mode {
             return self.handle_language_selection_key(key).await;
+        }
+
+        // Handle theme selection mode
+        if self.editor.theme_selection_mode {
+            return self.handle_theme_selection_key(key).await;
         }
 
         // Handle custom keybindings first
@@ -110,7 +117,7 @@ impl App {
             KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 // TODO: Implement file open dialog
             }
-            // Language selection mode trigger is handled in custom keybindings
+            // Language and theme selection mode triggers are handled in custom keybindings
             KeyCode::Left => self.editor.move_cursor_left(content_width),
             KeyCode::Right => self.editor.move_cursor_right(content_width),
             KeyCode::Up => self.editor.move_cursor_up(self.config.word_wrap, content_width),
@@ -130,7 +137,7 @@ impl App {
         Ok(())
     }
 
-    // NEW: Handle keys when in language selection mode
+    // Handle keys when in language selection mode
     async fn handle_language_selection_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Up => {
@@ -149,7 +156,7 @@ impl App {
                 // Allow quit even in language selection mode
                 self.running = false;
             }
-            // NEW: Quick language selection with number keys
+            // Quick language selection with number keys
             KeyCode::Char(c) if c.is_ascii_digit() => {
                 let digit = c.to_digit(10).unwrap() as usize;
                 let languages = Buffer::get_supported_languages();
@@ -163,6 +170,98 @@ impl App {
             }
         }
         Ok(())
+    }
+
+    // Handle keys when in theme selection mode
+    async fn handle_theme_selection_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Up => {
+                self.editor.theme_selection_up();
+                self.preview_selected_theme();
+            }
+            KeyCode::Down => {
+                self.editor.theme_selection_down();
+                self.preview_selected_theme();
+            }
+            KeyCode::Enter => {
+                if let Some(theme_filename) = self.editor.get_selected_theme() {
+                    if theme_filename == "_default" {
+                        // Reset to default theme
+                        self.config.theme = Theme::default();
+                        self.config.theme_name = Some("_default".to_string());
+                    } else {
+                        // Load the selected theme
+                        if let Err(e) = self.config.load_theme(theme_filename) {
+                            eprintln!("Failed to load theme: {}", e);
+                        }
+                    }
+                    self.editor.exit_theme_selection_mode();
+                    self.saved_theme = None; // Clear saved theme
+                    
+                    // Save config with new theme
+                    if let Err(e) = self.config.save() {
+                        eprintln!("Failed to save config: {}", e);
+                    }
+                }
+            }
+            KeyCode::Esc => {
+                // Restore saved theme
+                if let Some(saved_theme) = self.saved_theme.take() {
+                    self.config.theme = saved_theme;
+                }
+                self.editor.exit_theme_selection_mode();
+            }
+            KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                // Allow quit even in theme selection mode
+                self.running = false;
+            }
+            // Quick theme selection with number keys
+            KeyCode::Char(c) if c.is_ascii_digit() => {
+                let digit = c.to_digit(10).unwrap() as usize;
+                if digit > 0 && digit <= self.editor.available_themes.len() {
+                    self.editor.theme_selection_index = digit - 1;
+                    self.preview_selected_theme();
+                    
+                    if let Some(theme_filename) = self.editor.get_selected_theme() {
+                        if theme_filename == "_default" {
+                            self.config.theme = Theme::default();
+                            self.config.theme_name = Some("_default".to_string());
+                        } else {
+                            if let Err(e) = self.config.load_theme(theme_filename) {
+                                eprintln!("Failed to load theme: {}", e);
+                            }
+                        }
+                        self.editor.exit_theme_selection_mode();
+                        self.saved_theme = None; // Clear saved theme
+                        
+                        // Save config with new theme
+                        if let Err(e) = self.config.save() {
+                            eprintln!("Failed to save config: {}", e);
+                        }
+                    }
+                }
+            }
+            _ => {
+                // Ignore other keys in theme selection mode
+            }
+        }
+        Ok(())
+    }
+
+    fn preview_selected_theme(&mut self) {
+        if let Some(theme_filename) = self.editor.get_selected_theme() {
+            if theme_filename == "_default" {
+                self.config.theme = Theme::default();
+            } else {
+                // Try to load the theme for preview
+                let mut temp_config = Config::default();
+                if let Err(e) = temp_config.load_theme(theme_filename) {
+                    eprintln!("Failed to preview theme: {}", e);
+                } else {
+                    self.config.theme = temp_config.theme;
+                }
+            }
+        }
     }
 
     fn calculate_content_width(&self) -> usize {
@@ -210,9 +309,20 @@ impl App {
             return Ok(true);
         }
 
-        // NEW: Language selection keybinding
+        // Language selection keybinding
         if key == keybindings.language_selection {
             self.editor.enter_language_selection_mode();
+            return Ok(true);
+        }
+
+        // Theme selection keybinding
+        if key == keybindings.theme_selection {
+            // Save current theme before entering selection mode
+            self.saved_theme = Some(self.config.theme.clone());
+            let current_theme_name = &self.config.theme.name;
+            if let Err(e) = self.editor.enter_theme_selection_mode(current_theme_name) {
+                eprintln!("Failed to enter theme selection mode: {}", e);
+            }
             return Ok(true);
         }
 

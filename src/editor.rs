@@ -1,6 +1,7 @@
 // src/editor.rs
 
 use crate::buffer::Buffer;
+use crate::config::{Config, Theme};
 use anyhow::Result;
 use std::path::PathBuf;
 
@@ -8,9 +9,13 @@ pub struct Editor {
     pub buffers: Vec<Buffer>,
     pub active_buffer: usize,
     pub viewport_line: usize,
-    // NEW: State for language selection mode
+    // Language selection mode
     pub language_selection_mode: bool,
     pub language_selection_index: usize,
+    // Theme selection mode
+    pub theme_selection_mode: bool,
+    pub theme_selection_index: usize,
+    pub available_themes: Vec<(String, String)>, // (filename, display_name)
 }
 
 impl Editor {
@@ -21,6 +26,9 @@ impl Editor {
             viewport_line: 0,
             language_selection_mode: false,
             language_selection_index: 0,
+            theme_selection_mode: false,
+            theme_selection_index: 0,
+            available_themes: Vec::new(),
         }
     }
 
@@ -51,7 +59,7 @@ impl Editor {
         Ok(())
     }
 
-    // NEW: Enter language selection mode
+    // Language selection methods
     pub fn enter_language_selection_mode(&mut self) {
         if self.current_buffer().is_some() {
             self.language_selection_mode = true;
@@ -67,12 +75,10 @@ impl Editor {
         }
     }
 
-    // NEW: Exit language selection mode
     pub fn exit_language_selection_mode(&mut self) {
         self.language_selection_mode = false;
     }
 
-    // NEW: Navigate in language selection
     pub fn language_selection_up(&mut self) {
         if self.language_selection_mode {
             let languages = Buffer::get_supported_languages();
@@ -95,7 +101,6 @@ impl Editor {
         }
     }
 
-    // NEW: Apply selected language
     pub fn apply_selected_language(&mut self) -> bool {
         if self.language_selection_mode {
             let languages = Buffer::get_supported_languages();
@@ -110,7 +115,6 @@ impl Editor {
         false
     }
 
-    // NEW: Get current language selection info for UI
     pub fn get_language_selection_info(&self) -> Option<(Vec<&'static str>, usize)> {
         if self.language_selection_mode {
             Some((Buffer::get_supported_languages(), self.language_selection_index))
@@ -119,17 +123,101 @@ impl Editor {
         }
     }
 
-    // NEW: Change language directly (for programmatic use)
     pub fn set_current_buffer_language(&mut self, language: &str) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.set_language(language);
         }
     }
 
-    /// Update the preferred visual column based on the current cursor position (with content width)
-    /// This calculates the position within the current visual line segment
-    /// ONLY call this when the user explicitly moves horizontally or edits text
-    fn update_preferred_visual_column_with_width(&mut self, content_width: usize) {
+    // Theme selection methods
+    pub fn enter_theme_selection_mode(&mut self, current_theme_name: &str) -> Result<()> {
+        self.theme_selection_mode = true;
+        self.theme_selection_index = 0;
+        
+        // Load available themes
+        let themes_dir = Config::themes_dir()?;
+        self.available_themes = Vec::new();
+        
+        // Add the built-in default theme
+        self.available_themes.push(("_default".to_string(), "Default Dark".to_string()));
+        
+        if themes_dir.exists() {
+            let mut theme_files: Vec<(String, String)> = std::fs::read_dir(themes_dir)?
+                .filter_map(|entry| {
+                    entry.ok().and_then(|e| {
+                        let path = e.path();
+                        if path.extension()?.to_str()? == "toml" {
+                            let filename = path.file_stem()?.to_str()?.to_string();
+                            // Try to load theme to get display name
+                            if let Ok(content) = std::fs::read_to_string(&path) {
+                                if let Ok(theme) = toml::from_str::<Theme>(&content) {
+                                    return Some((filename, theme.name));
+                                }
+                            }
+                            Some((filename.clone(), filename))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .collect();
+            
+            theme_files.sort_by(|a, b| a.1.cmp(&b.1));
+            self.available_themes.extend(theme_files);
+        }
+        
+        // Find current theme index
+        if let Some(pos) = self.available_themes.iter().position(|(_, name)| name == current_theme_name) {
+            self.theme_selection_index = pos;
+        }
+        
+        Ok(())
+    }
+
+    pub fn exit_theme_selection_mode(&mut self) {
+        self.theme_selection_mode = false;
+        self.available_themes.clear();
+    }
+
+    pub fn theme_selection_up(&mut self) {
+        if self.theme_selection_mode && !self.available_themes.is_empty() {
+            if self.theme_selection_index > 0 {
+                self.theme_selection_index -= 1;
+            } else {
+                self.theme_selection_index = self.available_themes.len() - 1;
+            }
+        }
+    }
+
+    pub fn theme_selection_down(&mut self) {
+        if self.theme_selection_mode && !self.available_themes.is_empty() {
+            if self.theme_selection_index < self.available_themes.len() - 1 {
+                self.theme_selection_index += 1;
+            } else {
+                self.theme_selection_index = 0;
+            }
+        }
+    }
+
+    pub fn get_selected_theme(&self) -> Option<&str> {
+        if self.theme_selection_mode {
+            self.available_themes.get(self.theme_selection_index)
+                .map(|(filename, _)| filename.as_str())
+        } else {
+            None
+        }
+    }
+
+    pub fn get_theme_selection_info(&self) -> Option<(&[(String, String)], usize)> {
+        if self.theme_selection_mode {
+            Some((&self.available_themes, self.theme_selection_index))
+        } else {
+            None
+        }
+    }
+
+    // Cursor movement methods with word-wrap support
+    pub fn update_preferred_visual_column_with_width(&mut self, content_width: usize) {
         // Extract needed data first to avoid borrowing conflicts
         let (line_text, cursor_column) = if let Some(buffer) = self.current_buffer() {
             (buffer.get_line_text(buffer.cursor.line), buffer.cursor.column)
@@ -179,12 +267,9 @@ impl Editor {
         }
     }
 
-    // Word-wrap aware cursor movement methods
     pub fn move_cursor_left(&mut self, content_width: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.move_cursor_left();
-            // Update preferred visual column based on new position
-            // This is intentional - horizontal movement should update the preferred column
             self.update_preferred_visual_column_with_width(content_width);
             self.adjust_viewport();
         }
@@ -193,8 +278,6 @@ impl Editor {
     pub fn move_cursor_right(&mut self, content_width: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.move_cursor_right();
-            // Update preferred visual column based on new position
-            // This is intentional - horizontal movement should update the preferred column
             self.update_preferred_visual_column_with_width(content_width);
             self.adjust_viewport();
         }
@@ -255,7 +338,6 @@ impl Editor {
             }
         }
         self.adjust_viewport();
-        // DO NOT call update_preferred_visual_column() here - vertical movement should preserve it
     }
 
     pub fn move_cursor_down(&mut self, word_wrap: bool, content_width: usize) {
@@ -318,7 +400,6 @@ impl Editor {
             }
         }
         self.adjust_viewport();
-        // DO NOT call update_preferred_visual_column() here - vertical movement should preserve it
     }
 
     fn move_cursor_up_visual(&mut self, content_width: usize) {
@@ -563,8 +644,6 @@ impl Editor {
     pub fn insert_char(&mut self, c: char, content_width: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.insert_char(c);
-            // Update preferred visual column after typing
-            // This is intentional - text insertion should update the preferred column
             self.update_preferred_visual_column_with_width(content_width);
         }
     }
@@ -573,7 +652,6 @@ impl Editor {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.insert_newline();
             self.adjust_viewport();
-            // Don't update preferred visual column - newline resets to column 0
         }
     }
 
@@ -583,8 +661,6 @@ impl Editor {
             for _ in 0..4 {
                 buffer.insert_char(' ');
             }
-            // Update preferred visual column after typing
-            // This is intentional - text insertion should update the preferred column
             self.update_preferred_visual_column_with_width(content_width);
         }
     }
@@ -592,8 +668,6 @@ impl Editor {
     pub fn delete_char_backwards(&mut self, content_width: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.delete_char_backwards();
-            // Update preferred visual column after deletion
-            // This is intentional - deletion should update the preferred column
             self.update_preferred_visual_column_with_width(content_width);
             self.adjust_viewport();
         }
@@ -602,7 +676,6 @@ impl Editor {
     pub fn delete_char_forwards(&mut self) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.delete_char_forwards();
-            // Note: Forward delete doesn't change cursor position, so no need to update preferred column
         }
     }
 

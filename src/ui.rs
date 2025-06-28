@@ -47,7 +47,12 @@ impl Ui {
 
         // Draw language selection modal if active
         if editor.language_selection_mode {
-            self.draw_language_selection_modal(f, editor);
+            self.draw_language_selection_modal(f, editor, config);
+        }
+        
+        // Draw theme selection modal if active
+        if editor.theme_selection_mode {
+            self.draw_theme_selection_modal(f, editor, config);
         }
     }
 
@@ -68,15 +73,29 @@ impl Ui {
 
             // Convert to ratatui Lines with tree-sitter syntax highlighting
             let lines: Vec<Line> = wrapped_lines.iter().map(|wl| {
-                self.apply_syntax_highlighting(wl.content.clone(), buffer, wl.logical_line)
+                self.apply_syntax_highlighting_wrapped(
+                    wl.content.clone(), 
+                    buffer, 
+                    wl.logical_line, 
+                    wl.line_start_col,
+                    config
+                )
             }).collect();
 
             // Simple title based on language
             let display_name = Buffer::get_language_display_name(&buffer.language);
             let title = format!("Thyme Editor [{}]", display_name);
 
+            let border_color = config.theme.parse_color(&config.theme.colors.border);
+            let bg_color = config.theme.parse_color(&config.theme.colors.background);
+            let fg_color = config.theme.parse_color(&config.theme.colors.foreground);
+
             let paragraph = Paragraph::new(lines)
-                .block(Block::default().borders(Borders::ALL).title(title));
+                .block(Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(border_color))
+                    .title(title))
+                .style(Style::default().bg(bg_color).fg(fg_color));
 
             f.render_widget(paragraph, editor_area);
 
@@ -91,6 +110,10 @@ impl Ui {
                 }
             }
         } else {
+            let border_color = config.theme.parse_color(&config.theme.colors.border);
+            let bg_color = config.theme.parse_color(&config.theme.colors.background);
+            let fg_color = config.theme.parse_color(&config.theme.colors.foreground);
+
             let welcome = Paragraph::new(vec![
                 Line::from("Welcome to Thyme Editor"),
                 Line::from(""),
@@ -107,6 +130,7 @@ impl Ui {
                 Line::from(""),
                 Line::from("Features:"),
                 Line::from("• Tree-sitter syntax highlighting for 7 languages"),
+                Line::from("• Customizable color themes"),
                 Line::from("• Word wrapping with proper cursor handling"),
                 Line::from("• Auto-save functionality"),
                 Line::from("• Configurable margins and keybindings"),
@@ -117,17 +141,22 @@ impl Ui {
                 Line::from("• F3/F4: Adjust horizontal margins"),
                 Line::from("• F5: Toggle word wrap"),
                 Line::from("• Ctrl+L: Change syntax highlighting language"),
+                Line::from("• Ctrl+T: Change color theme"),
                 Line::from("• Ctrl+S: Save"),
                 Line::from("• Ctrl+Q: Quit"),
             ])
-            .block(Block::default().borders(Borders::ALL).title("Thyme Editor"));
+            .block(Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(border_color))
+                .title("Thyme Editor"))
+            .style(Style::default().bg(bg_color).fg(fg_color));
             
             f.render_widget(welcome, area);
         }
     }
 
     // Draw language selection modal
-    fn draw_language_selection_modal(&self, f: &mut ratatui::Frame, editor: &Editor) {
+    fn draw_language_selection_modal(&self, f: &mut ratatui::Frame, editor: &Editor, config: &Config) {
         if let Some((languages, selected_index)) = editor.get_language_selection_info() {
             // Calculate modal size and position
             let modal_width = 50;
@@ -143,6 +172,12 @@ impl Ui {
 
             // Clear the background
             f.render_widget(Clear, modal_area);
+
+            let modal_bg = config.theme.parse_color(&config.theme.colors.modal_bg);
+            let modal_fg = config.theme.parse_color(&config.theme.colors.modal_fg);
+            let selection_bg = config.theme.parse_color(&config.theme.colors.selection_bg);
+            let selection_fg = config.theme.parse_color(&config.theme.colors.selection_fg);
+            let border_color = config.theme.parse_color(&config.theme.colors.border_active);
 
             // Create language list items with numbering and tree-sitter version info
             let items: Vec<ListItem> = languages
@@ -163,12 +198,12 @@ impl Ui {
                     if i == selected_index {
                         ListItem::new(text).style(
                             Style::default()
-                                .bg(Color::Blue)
-                                .fg(Color::White)
+                                .bg(selection_bg)
+                                .fg(selection_fg)
                                 .add_modifier(Modifier::BOLD)
                         )
                     } else {
-                        ListItem::new(text)
+                        ListItem::new(text).style(Style::default().fg(modal_fg))
                     }
                 })
                 .collect();
@@ -178,10 +213,11 @@ impl Ui {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
+                        .border_style(Style::default().fg(border_color))
                         .title("Select Language (↑↓ to navigate, Enter to select, Esc to cancel)")
-                        .style(Style::default().bg(Color::Black))
+                        .style(Style::default().bg(modal_bg))
                 )
-                .style(Style::default().fg(Color::White));
+                .style(Style::default().fg(modal_fg));
 
             f.render_widget(list, modal_area);
 
@@ -200,6 +236,83 @@ impl Ui {
             let current_display = Buffer::get_language_display_name(current_lang);
             let instruction = Paragraph::new(
                 format!("Current: {} | Press 1-{} for quick select", current_display, languages.len())
+            )
+            .style(Style::default().fg(Color::Gray))
+            .alignment(Alignment::Center);
+
+            f.render_widget(instruction, instruction_area);
+        }
+    }
+
+    // Draw theme selection modal
+    fn draw_theme_selection_modal(&self, f: &mut ratatui::Frame, editor: &Editor, config: &Config) {
+        if let Some((themes, selected_index)) = editor.get_theme_selection_info() {
+            // Calculate modal size and position
+            let modal_width = 60;
+            let modal_height = (themes.len() as u16).min(15) + 4; // +4 for borders and title, max 15 items visible
+            
+            let area = f.area();
+            let modal_area = Rect {
+                x: (area.width.saturating_sub(modal_width)) / 2,
+                y: (area.height.saturating_sub(modal_height)) / 2,
+                width: modal_width,
+                height: modal_height,
+            };
+
+            // Clear the background
+            f.render_widget(Clear, modal_area);
+
+            let modal_bg = config.theme.parse_color(&config.theme.colors.modal_bg);
+            let modal_fg = config.theme.parse_color(&config.theme.colors.modal_fg);
+            let selection_bg = config.theme.parse_color(&config.theme.colors.selection_bg);
+            let selection_fg = config.theme.parse_color(&config.theme.colors.selection_fg);
+            let border_color = config.theme.parse_color(&config.theme.colors.border_active);
+
+            // Create theme list items with numbering
+            let items: Vec<ListItem> = themes
+                .iter()
+                .enumerate()
+                .map(|(i, (_, display_name))| {
+                    let number = i + 1;
+                    let text = format!("{}. {}", number, display_name);
+                    
+                    if i == selected_index {
+                        ListItem::new(text).style(
+                            Style::default()
+                                .bg(selection_bg)
+                                .fg(selection_fg)
+                                .add_modifier(Modifier::BOLD)
+                        )
+                    } else {
+                        ListItem::new(text).style(Style::default().fg(modal_fg))
+                    }
+                })
+                .collect();
+
+            // Create the list widget
+            let list = List::new(items)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(border_color))
+                        .title("Select Theme (↑↓ to navigate, Enter to select, Esc to cancel)")
+                        .style(Style::default().bg(modal_bg))
+                )
+                .style(Style::default().fg(modal_fg));
+
+            f.render_widget(list, modal_area);
+
+            // Add instruction text at the bottom of the modal
+            let instruction_area = Rect {
+                x: modal_area.x + 1,
+                y: modal_area.y + modal_area.height - 2,
+                width: modal_area.width - 2,
+                height: 1,
+            };
+
+            let current_theme = &config.theme.name;
+            let instruction = Paragraph::new(
+                format!("Current: {} | Press 1-{} for quick select", current_theme, themes.len().min(9))
             )
             .style(Style::default().fg(Color::Gray))
             .alignment(Alignment::Center);
@@ -286,72 +399,119 @@ impl Ui {
         wrap_line_simple(text, width)
     }
 
-    fn apply_syntax_highlighting(&self, text: String, buffer: &Buffer, line_idx: usize) -> Line<'static> {
+    fn apply_syntax_highlighting_wrapped(
+        &self, 
+        text: String, 
+        buffer: &Buffer, 
+        line_idx: usize, 
+        segment_start: usize,
+        config: &Config
+    ) -> Line<'static> {
         if let Some(tokens) = buffer.syntax_highlighter.get_line_tokens(line_idx) {
             let mut spans = Vec::new();
             let mut last_end = 0;
-            let text_len = text.len();
+            let text_chars: Vec<char> = text.chars().collect();
+            let text_len = text_chars.len();
+            let segment_end = segment_start + text_len;
 
             for token in tokens {
-                // Ensure token positions are within bounds
-                let token_start = token.start.min(text_len);
-                let token_end = token.end.min(text_len);
+                // Skip tokens that are entirely outside this segment
+                if token.end <= segment_start || token.start >= segment_end {
+                    continue;
+                }
+
+                // Adjust token positions relative to this segment
+                let token_start_in_segment = if token.start >= segment_start {
+                    token.start - segment_start
+                } else {
+                    0
+                };
                 
-                // Skip invalid tokens
-                if token_start >= token_end || token_start > text_len {
+                let token_end_in_segment = if token.end <= segment_end {
+                    token.end - segment_start
+                } else {
+                    text_len
+                };
+
+                // Skip if adjusted positions are invalid
+                if token_start_in_segment >= token_end_in_segment || token_start_in_segment >= text_len {
                     continue;
                 }
 
                 // Add unstyled text before token
-                if token_start > last_end && last_end < text_len {
-                    let slice_end = token_start.min(text_len);
-                    if let Some(text_slice) = text.get(last_end..slice_end) {
-                        spans.push(Span::raw(text_slice.to_string()));
+                if token_start_in_segment > last_end && last_end < text_len {
+                    let slice_start = last_end;
+                    let slice_end = token_start_in_segment.min(text_len);
+                    
+                    if slice_start < text_chars.len() && slice_end <= text_chars.len() {
+                        let text_slice: String = text_chars[slice_start..slice_end].iter().collect();
+                        let normal_color = config.theme.parse_color(&config.theme.colors.normal);
+                        spans.push(Span::styled(text_slice, Style::default().fg(normal_color)));
                     }
                 }
 
-                // Add styled token with bounds checking
-                if let Some(token_text) = text.get(token_start..token_end) {
-                    let style = self.get_token_style(&token.token_type);
-                    spans.push(Span::styled(token_text.to_string(), style));
-                    last_end = token_end;
-                } else {
-                    // If token is out of bounds, skip it
-                    continue;
+                // Add styled token (with additional bounds checking)
+                if token_start_in_segment < text_chars.len() && 
+                   token_end_in_segment <= text_chars.len() && 
+                   token_start_in_segment < token_end_in_segment {
+                    let token_text: String = text_chars[token_start_in_segment..token_end_in_segment].iter().collect();
+                    let style = self.get_token_style(&token.token_type, config);
+                    spans.push(Span::styled(token_text, style));
+                    last_end = token_end_in_segment;
                 }
             }
 
             // Add remaining unstyled text
             if last_end < text_len {
-                if let Some(remaining_text) = text.get(last_end..) {
-                    spans.push(Span::raw(remaining_text.to_string()));
+                if last_end < text_chars.len() {
+                    let remaining_text: String = text_chars[last_end..].iter().collect();
+                    let normal_color = config.theme.parse_color(&config.theme.colors.normal);
+                    spans.push(Span::styled(remaining_text, Style::default().fg(normal_color)));
                 }
             }
 
-            Line::from(spans)
+            // If no spans were added, return the entire text as normal
+            if spans.is_empty() {
+                let normal_color = config.theme.parse_color(&config.theme.colors.normal);
+                Line::styled(text, Style::default().fg(normal_color))
+            } else {
+                Line::from(spans)
+            }
         } else {
-            Line::from(text)
+            let normal_color = config.theme.parse_color(&config.theme.colors.normal);
+            Line::styled(text, Style::default().fg(normal_color))
         }
     }
 
-    fn get_token_style(&self, token_type: &TokenType) -> Style {
+    fn get_token_style(&self, token_type: &TokenType, config: &Config) -> Style {
+        let color = match token_type {
+            TokenType::Keyword => config.theme.parse_color(&config.theme.colors.keyword),
+            TokenType::String => config.theme.parse_color(&config.theme.colors.string),
+            TokenType::Comment => config.theme.parse_color(&config.theme.colors.comment),
+            TokenType::Number => config.theme.parse_color(&config.theme.colors.number),
+            TokenType::Operator => config.theme.parse_color(&config.theme.colors.operator),
+            TokenType::Identifier => config.theme.parse_color(&config.theme.colors.identifier),
+            TokenType::Type => config.theme.parse_color(&config.theme.colors.type_),
+            TokenType::Function => config.theme.parse_color(&config.theme.colors.function),
+            TokenType::Variable => config.theme.parse_color(&config.theme.colors.variable),
+            TokenType::Property => config.theme.parse_color(&config.theme.colors.property),
+            TokenType::Parameter => config.theme.parse_color(&config.theme.colors.parameter),
+            TokenType::Constant => config.theme.parse_color(&config.theme.colors.constant),
+            TokenType::Namespace => config.theme.parse_color(&config.theme.colors.namespace),
+            TokenType::Punctuation => config.theme.parse_color(&config.theme.colors.punctuation),
+            TokenType::Tag => config.theme.parse_color(&config.theme.colors.tag),
+            TokenType::Attribute => config.theme.parse_color(&config.theme.colors.attribute),
+            TokenType::Normal => config.theme.parse_color(&config.theme.colors.normal),
+        };
+
+        // Add modifiers based on token type
+        let style = Style::default().fg(color);
+        
         match token_type {
-            TokenType::Keyword => Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
-            TokenType::String => Style::default().fg(Color::Green),
-            TokenType::Comment => Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC),
-            TokenType::Number => Style::default().fg(Color::Cyan),
-            TokenType::Operator => Style::default().fg(Color::Yellow),
-            TokenType::Identifier | TokenType::Variable => Style::default().fg(Color::White),
-            TokenType::Type => Style::default().fg(Color::Magenta),
-            TokenType::Function => Style::default().fg(Color::Blue),
-            TokenType::Property => Style::default().fg(Color::Cyan),
-            TokenType::Parameter => Style::default().fg(Color::LightBlue),
-            TokenType::Constant => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            TokenType::Namespace => Style::default().fg(Color::Magenta),
-            TokenType::Punctuation => Style::default().fg(Color::Gray),
-            TokenType::Tag => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            TokenType::Attribute => Style::default().fg(Color::Yellow),
-            TokenType::Normal => Style::default(),
+            TokenType::Keyword | TokenType::Constant => style.add_modifier(Modifier::BOLD),
+            TokenType::Comment => style.add_modifier(Modifier::ITALIC),
+            TokenType::Tag => style.add_modifier(Modifier::BOLD),
+            _ => style,
         }
     }
 
@@ -389,17 +549,25 @@ impl Ui {
             status_text.push_str("WRAP ");
         }
 
-        status_text.push_str(&format!("M:{}x{}", config.margins.horizontal, config.margins.vertical));
+        status_text.push_str(&format!("M:{}x{} ", config.margins.horizontal, config.margins.vertical));
+
+        // Theme name
+        status_text.push_str(&format!("Theme: {} ", config.theme.name));
 
         // Language selection hint
         if editor.language_selection_mode {
-            status_text.push_str(" | LANGUAGE SELECTION MODE");
+            status_text.push_str("| LANGUAGE SELECTION MODE");
+        } else if editor.theme_selection_mode {
+            status_text.push_str("| THEME SELECTION MODE");
         } else {
-            status_text.push_str(" | Ctrl+L: Change Language");
+            status_text.push_str("| Ctrl+L: Language | Ctrl+T: Theme");
         }
 
+        let status_bg = config.theme.parse_color(&config.theme.colors.status_bar_bg);
+        let status_fg = config.theme.parse_color(&config.theme.colors.status_bar_fg);
+
         let status = Paragraph::new(status_text)
-            .style(Style::default().bg(Color::Blue).fg(Color::White));
+            .style(Style::default().bg(status_bg).fg(status_fg));
 
         f.render_widget(status, area);
     }

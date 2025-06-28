@@ -11,6 +11,10 @@ pub struct Config {
     pub margins: Margins,
     pub word_wrap: bool,
     pub auto_save_delay: Duration,
+    #[serde(skip)]
+    pub theme: Theme,
+    #[serde(default)]
+    pub theme_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -20,8 +24,8 @@ pub struct KeyBindings {
     pub increase_horizontal_margin: SerializableKeyEvent,
     pub decrease_horizontal_margin: SerializableKeyEvent,
     pub toggle_word_wrap: SerializableKeyEvent,
-    // NEW: Language selection keybinding
     pub language_selection: SerializableKeyEvent,
+    pub theme_selection: SerializableKeyEvent,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,6 +38,98 @@ pub struct SerializableKeyEvent {
 pub struct Margins {
     pub vertical: u16,
     pub horizontal: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Theme {
+    pub name: String,
+    pub colors: ThemeColors,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeColors {
+    // Editor colors
+    pub background: String,
+    pub foreground: String,
+    pub cursor: String,
+    pub selection: String,
+    pub line_number: String,
+    pub current_line: String,
+    
+    // Syntax colors
+    pub keyword: String,
+    pub string: String,
+    pub comment: String,
+    pub number: String,
+    pub operator: String,
+    pub identifier: String,
+    pub type_: String,  // Note: 'type' is a keyword, so we use 'type_'
+    pub function: String,
+    pub variable: String,
+    pub property: String,
+    pub parameter: String,
+    pub constant: String,
+    pub namespace: String,
+    pub punctuation: String,
+    pub tag: String,
+    pub attribute: String,
+    pub normal: String,
+    
+    // UI colors
+    pub status_bar_bg: String,
+    pub status_bar_fg: String,
+    pub border: String,
+    pub border_active: String,
+    pub modal_bg: String,
+    pub modal_fg: String,
+    pub selection_bg: String,
+    pub selection_fg: String,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            name: "Default Dark".to_string(),
+            colors: ThemeColors {
+                // Editor colors
+                background: "#1e1e1e".to_string(),
+                foreground: "#d4d4d4".to_string(),
+                cursor: "#ffffff".to_string(),
+                selection: "#264f78".to_string(),
+                line_number: "#858585".to_string(),
+                current_line: "#2a2a2a".to_string(),
+                
+                // Syntax colors
+                keyword: "#569cd6".to_string(),
+                string: "#ce9178".to_string(),
+                comment: "#6a9955".to_string(),
+                number: "#b5cea8".to_string(),
+                operator: "#d4d4d4".to_string(),
+                identifier: "#9cdcfe".to_string(),
+                type_: "#4ec9b0".to_string(),
+                function: "#dcdcaa".to_string(),
+                variable: "#9cdcfe".to_string(),
+                property: "#9cdcfe".to_string(),
+                parameter: "#9cdcfe".to_string(),
+                constant: "#d16969".to_string(),
+                namespace: "#c586c0".to_string(),
+                punctuation: "#d4d4d4".to_string(),
+                tag: "#569cd6".to_string(),
+                attribute: "#9cdcfe".to_string(),
+                normal: "#d4d4d4".to_string(),
+                
+                // UI colors
+                status_bar_bg: "#007acc".to_string(),
+                status_bar_fg: "#ffffff".to_string(),
+                border: "#3e3e3e".to_string(),
+                border_active: "#007acc".to_string(),
+                modal_bg: "#252526".to_string(),
+                modal_fg: "#cccccc".to_string(),
+                selection_bg: "#007acc".to_string(),
+                selection_fg: "#ffffff".to_string(),
+            }
+        }
+    }
 }
 
 impl Default for Config {
@@ -60,9 +156,12 @@ impl Default for Config {
                     code: "F5".to_string(),
                     modifiers: vec![],
                 },
-                // NEW: Default language selection to Ctrl+L
                 language_selection: SerializableKeyEvent {
                     code: "l".to_string(),
+                    modifiers: vec!["ctrl".to_string()],
+                },
+                theme_selection: SerializableKeyEvent {
+                    code: "t".to_string(),
                     modifiers: vec!["ctrl".to_string()],
                 },
             },
@@ -72,6 +171,8 @@ impl Default for Config {
             },
             word_wrap: false,
             auto_save_delay: Duration::from_secs(2),
+            theme: Theme::default(),
+            theme_name: None,
         }
     }
 }
@@ -84,8 +185,19 @@ impl Config {
             let content = std::fs::read_to_string(config_path)?;
             // Try to deserialize, but if it fails (e.g., due to new fields), 
             // fall back to default and save it
-            match toml::from_str(&content) {
-                Ok(config) => Ok(config),
+            match toml::from_str::<Config>(&content) {
+                Ok(mut config) => {
+                    // Load the theme if specified
+                    if let Some(theme_name) = config.theme_name.clone() {
+                        if theme_name != "_default" {
+                            if let Err(e) = config.load_theme(&theme_name) {
+                                eprintln!("Failed to load theme '{}': {}", theme_name, e);
+                                config.theme = Theme::default();
+                            }
+                        }
+                    }
+                    Ok(config)
+                }
                 Err(_) => {
                     let config = Self::default();
                     config.save()?;
@@ -114,9 +226,80 @@ impl Config {
     fn config_path() -> Result<PathBuf> {
         let mut path = dirs::config_dir()
             .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
-        path.push("tui-editor");
+        path.push("thyme");
         path.push("config.toml");
         Ok(path)
+    }
+
+    pub fn load_theme(&mut self, theme_name: &str) -> Result<()> {
+        let theme_path = Self::theme_path(theme_name)?;
+        
+        if theme_path.exists() {
+            let content = std::fs::read_to_string(theme_path)?;
+            let theme: Theme = toml::from_str(&content)?;
+            self.theme = theme;
+            self.theme_name = Some(theme_name.to_string());
+            Ok(())
+        } else {
+            anyhow::bail!("Theme '{}' not found", theme_name)
+        }
+    }
+
+    pub fn theme_path(theme_name: &str) -> Result<PathBuf> {
+        let mut path = dirs::config_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
+        path.push("thyme");
+        path.push("themes");
+        path.push(format!("{}.toml", theme_name));
+        Ok(path)
+    }
+
+    pub fn themes_dir() -> Result<PathBuf> {
+        let mut path = dirs::config_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
+        path.push("thyme");
+        path.push("themes");
+        Ok(path)
+    }
+}
+
+// Helper function to parse hex color strings to ratatui Color
+impl Theme {
+    pub fn parse_color(&self, color_str: &str) -> ratatui::style::Color {
+        use ratatui::style::Color;
+        
+        // Handle hex colors
+        if let Some(hex) = color_str.strip_prefix('#') {
+            if hex.len() == 6 {
+                if let Ok(rgb) = u32::from_str_radix(hex, 16) {
+                    let r = ((rgb >> 16) & 0xFF) as u8;
+                    let g = ((rgb >> 8) & 0xFF) as u8;
+                    let b = (rgb & 0xFF) as u8;
+                    return Color::Rgb(r, g, b);
+                }
+            }
+        }
+        
+        // Handle named colors
+        match color_str.to_lowercase().as_str() {
+            "black" => Color::Black,
+            "red" => Color::Red,
+            "green" => Color::Green,
+            "yellow" => Color::Yellow,
+            "blue" => Color::Blue,
+            "magenta" => Color::Magenta,
+            "cyan" => Color::Cyan,
+            "gray" | "grey" => Color::Gray,
+            "darkgray" | "darkgrey" => Color::DarkGray,
+            "lightred" => Color::LightRed,
+            "lightgreen" => Color::LightGreen,
+            "lightyellow" => Color::LightYellow,
+            "lightblue" => Color::LightBlue,
+            "lightmagenta" => Color::LightMagenta,
+            "lightcyan" => Color::LightCyan,
+            "white" => Color::White,
+            _ => Color::White, // Default fallback
+        }
     }
 }
 

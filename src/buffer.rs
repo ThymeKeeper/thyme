@@ -40,6 +40,9 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn new() -> Self {
+        let mut syntax_highlighter = SyntaxHighlighter::new();
+        syntax_highlighter.set_language("text");
+        
         Self {
             rope: Rope::new(),
             cursor: Cursor::new(),
@@ -47,7 +50,7 @@ impl Buffer {
             dirty: false,
             language: "text".to_string(),
             last_change: None,
-            syntax_highlighter: SyntaxHighlighter::new(),
+            syntax_highlighter,
             needs_syntax_update: true,
         }
     }
@@ -57,6 +60,9 @@ impl Buffer {
         let rope = Rope::from_str(&content);
         let language = detect_language(&path);
         
+        let mut syntax_highlighter = SyntaxHighlighter::new();
+        syntax_highlighter.set_language(&language);
+        
         let mut buffer = Self {
             rope,
             cursor: Cursor::new(),
@@ -64,11 +70,14 @@ impl Buffer {
             dirty: false,
             language: language.clone(),
             last_change: None,
-            syntax_highlighter: SyntaxHighlighter::new(),
+            syntax_highlighter,
             needs_syntax_update: true,
         };
 
-        buffer.syntax_highlighter.set_language(&language);
+        // Force initial syntax highlighting
+        buffer.syntax_highlighter.update(&buffer.rope);
+        buffer.needs_syntax_update = false;
+        
         Ok(buffer)
     }
 
@@ -78,9 +87,11 @@ impl Buffer {
             self.language = language.to_string();
             self.syntax_highlighter.set_language(language);
             self.needs_syntax_update = true;
-            // Force immediate update for visual feedback
-            self.syntax_highlighter.update(&self.rope);
-            self.needs_syntax_update = false;
+            // Only force immediate update if buffer has content
+            if self.rope.len_chars() > 0 {
+                self.syntax_highlighter.update(&self.rope);
+                self.needs_syntax_update = false;
+            }
         }
     }
 
@@ -118,6 +129,8 @@ impl Buffer {
         self.rope.insert_char(char_idx, c);
         self.cursor.column += 1;
         self.mark_dirty();
+        // Force immediate syntax update for responsive highlighting
+        self.force_syntax_update();
     }
 
     pub fn insert_newline(&mut self) {
@@ -127,6 +140,8 @@ impl Buffer {
         self.cursor.column = 0;
         self.cursor.preferred_visual_column = 0;
         self.mark_dirty();
+        // Force immediate syntax update for responsive highlighting
+        self.force_syntax_update();
     }
 
     pub fn delete_char_backwards(&mut self) {
@@ -143,6 +158,8 @@ impl Buffer {
             self.cursor.column = prev_line_len;
             self.mark_dirty();
         }
+        // Force immediate syntax update for responsive highlighting
+        self.force_syntax_update();
     }
 
     pub fn delete_char_forwards(&mut self) {
@@ -156,6 +173,8 @@ impl Buffer {
             self.rope.remove(char_idx..char_idx + 1);
             self.mark_dirty();
         }
+        // Force immediate syntax update for responsive highlighting
+        self.force_syntax_update();
     }
 
     pub fn move_cursor_left(&mut self) {
@@ -284,11 +303,32 @@ impl Buffer {
     pub fn reset_preferred_column(&mut self) {
         self.cursor.preferred_visual_column = self.cursor.column;
     }
+    
+    // Force syntax highlighting update
+    fn force_syntax_update(&mut self) {
+        if self.language != "text" {
+            self.syntax_highlighter.mark_dirty();
+            self.syntax_highlighter.update(&self.rope);
+            self.needs_syntax_update = false;
+        }
+    }
 }
 
 fn detect_language(path: &PathBuf) -> String {
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/thyme_debug.log")
+        .and_then(|mut f| std::io::Write::write_all(&mut f, 
+            format!("[DEBUG] Detecting language for path: {:?}\n", path).as_bytes()));
     if let Some(extension) = path.extension().and_then(|ext| ext.to_str()) {
-        match extension {
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/tmp/thyme_debug.log")
+            .and_then(|mut f| std::io::Write::write_all(&mut f, 
+                format!("[DEBUG] Found extension: {}\n", extension).as_bytes()));
+        let language = match extension {
             "rs" => "rust".to_string(),
             "py" => "python".to_string(),
             "js" | "jsx" => "javascript".to_string(),
@@ -298,8 +338,21 @@ fn detect_language(path: &PathBuf) -> String {
             "toml" => "toml".to_string(),
             "sql" | "mysql" | "pgsql" | "sqlite" => "sql".to_string(),
             _ => "text".to_string(),
-        }
+        };
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/tmp/thyme_debug.log")
+            .and_then(|mut f| std::io::Write::write_all(&mut f, 
+                format!("[DEBUG] Detected language: {}\n", language).as_bytes()));
+        language
     } else {
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/tmp/thyme_debug.log")
+            .and_then(|mut f| std::io::Write::write_all(&mut f, 
+                b"[DEBUG] No extension found, defaulting to text\n"));
         "text".to_string()
     }
 }

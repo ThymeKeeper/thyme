@@ -5,9 +5,12 @@
 
 use ropey::Rope;
 use std::collections::HashMap;
-use tree_sitter::{Language, Parser, Query, QueryCursor, Tree, QueryCapture};
+use std::fs::File;
+use std::io::{self, Write};
+use tree_sitter::{Language, Parser, Query, QueryCursor, Tree};
 
 // External function to get the SQL language (compiled from source)
+#[cfg(feature = "sql")]
 extern "C" { fn tree_sitter_sql() -> Language; }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,7 +67,19 @@ impl SyntaxHighlighter {
             return;
         }
 
+        match File::create("/tmp/thyme_debug.log") {
+            Ok(mut file) => {
+                writeln!(file, "[DEBUG] Setting language from '{}' to '{}'\n",
+                    self.language, language).expect("Failed to write to debug log");
+            }
+            Err(e) => {
+                eprintln!("[ERROR] Failed to create debug log: {}", e);
+            }
+        }
+
         self.language = language.to_string();
+        self.tokens_by_line.clear();
+        self.tree = None;
         
         let ts_language = match language {
             "rust" => Some(tree_sitter_rust::language()),
@@ -74,12 +89,11 @@ impl SyntaxHighlighter {
             "json" => Some(tree_sitter_json::language()),
             "toml" => Some(tree_sitter_toml::language()),
             "sql" => {
-                // Try to load the compiled SQL parser
-                #[cfg(not(feature = "no-sql"))]
+                #[cfg(feature = "sql")]
                 {
                     Some(unsafe { tree_sitter_sql() })
                 }
-                #[cfg(feature = "no-sql")]
+                #[cfg(not(feature = "sql"))]
                 {
                     None
                 }
@@ -89,11 +103,22 @@ impl SyntaxHighlighter {
 
         if let Some(lang) = ts_language {
             self.parser = Parser::new();
-            if self.parser.set_language(lang).is_ok() {
-                self.query = Self::create_highlight_query(language, lang);
+            if let Err(_) = self.parser.set_language(lang) {
+                self.query = None;
                 self.tree = None;
-                self.needs_update = true;
+                return;
             }
+            
+            match Self::create_highlight_query(language, lang) {
+                Some(query) => {
+                    self.query = Some(query);
+                },
+                None => {
+                    self.query = None;
+                }
+            }
+            self.tree = None;
+            self.needs_update = true;
         } else {
             // Fallback to no highlighting for unsupported languages
             self.parser = Parser::new();
@@ -105,38 +130,9 @@ impl SyntaxHighlighter {
     fn create_highlight_query(language: &str, ts_language: Language) -> Option<Query> {
         let query_string = match language {
             "rust" => r#"
-                (line_comment) @comment
-                (block_comment) @comment
-                (string_literal) @string
-                (raw_string_literal) @string
-                (char_literal) @string
-                (integer_literal) @number
-                (float_literal) @number
-                (boolean_literal) @constant
-                
-                [
-                    "use" "mod" "pub" "crate" "super" "self"
-                    "fn" "let" "mut" "const" "static"
-                    "if" "else" "match" "for" "while" "loop"
-                    "break" "continue" "return"
-                    "struct" "enum" "impl" "trait"
-                    "async" "await" "unsafe" "extern"
-                    "where" "as" "ref" "move"
-                    "dyn" "type" "in"
-                ] @keyword
-                
-                (type_identifier) @type
-                (primitive_type) @type
-                (function_item name: (identifier) @function)
-                (call_expression function: (identifier) @function)
-                (call_expression function: (field_expression field: (field_identifier) @function))
-                (macro_invocation macro: (identifier) @function)
-                
-                (field_identifier) @property
+                "fn" @keyword
+                "let" @keyword
                 (identifier) @variable
-                
-                ["(" ")" "[" "]" "{" "}"] @punctuation
-                ["+" "-" "*" "/" "%" "=" "==" "!=" "<" ">" "<=" ">=" "&&" "||" "!" "&" "|" "^" "<<" ">>"] @operator
             "#,
             
             "python" => r#"
@@ -149,28 +145,36 @@ impl SyntaxHighlighter {
                 (none) @constant
                 
                 [
-                    "def" "class" "return" "yield" "raise" "assert"
-                    "if" "elif" "else" "for" "while" "break" "continue"
-                    "try" "except" "finally" "with" "as"
-                    "import" "from" "global" "nonlocal"
-                    "lambda" "pass" "del" "and" "or" "not" "in" "is"
+                    "and" "as" "assert" "async" "await" "break" "class" "continue"
+                    "def" "del" "elif" "else" "except" "exec" "finally" "for" "from"
+                    "global" "if" "import" "in" "is" "lambda" "nonlocal" "not" "or"
+                    "pass" "print" "raise" "return" "try" "while" "with" "yield"
                 ] @keyword
                 
                 (function_definition name: (identifier) @function)
                 (call function: (identifier) @function)
+                (call function: (attribute attribute: (identifier) @function))
                 (class_definition name: (identifier) @type)
                 
                 (attribute attribute: (identifier) @property)
                 (identifier) @variable
                 
-                ["(" ")" "[" "]" "{" "}"] @punctuation
-                ["+" "-" "*" "/" "//" "%" "**" "=" "==" "!=" "<" ">" "<=" ">=" "&" "|" "^" "~" "<<" ">>"] @operator
+                ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
+                ["." "," ":" ";"] @punctuation.delimiter
+                [
+                    "+" "-" "*" "/" "//" "%" "**"
+                    "==" "!=" "<" ">" "<=" ">=" 
+                    "=" "+=" "-=" "*=" "/=" "//=" "%=" "**="
+                    "&" "|" "^" "~" "<<" ">>"
+                    "@"
+                ] @operator
             "#,
             
             "javascript" | "typescript" => r#"
                 (comment) @comment
                 (string) @string
                 (template_string) @string
+                (regex) @string
                 (number) @number
                 (true) @constant
                 (false) @constant
@@ -178,83 +182,136 @@ impl SyntaxHighlighter {
                 (undefined) @constant
                 
                 [
-                    "var" "let" "const" "function" "return"
-                    "if" "else" "for" "while" "do" "break" "continue"
-                    "switch" "case" "default" "try" "catch" "finally"
-                    "throw" "new" "delete" "typeof" "instanceof"
-                    "class" "extends" "super" "static"
-                    "import" "export" "from" "as" "default"
-                    "async" "await" "yield"
+                    "async" "await" "break" "case" "catch" "class" "const" "continue"
+                    "debugger" "default" "delete" "do" "else" "export" "extends"
+                    "finally" "for" "from" "function" "get" "if" "import" "in"
+                    "instanceof" "let" "new" "of" "return" "set" "static" "switch"
+                    "target" "throw" "try" "typeof" "var" "void" "while" "with"
+                    "yield"
                 ] @keyword
                 
                 (function_declaration name: (identifier) @function)
+                (function name: (identifier) @function)
                 (method_definition name: (property_identifier) @function)
                 (call_expression function: (identifier) @function)
+                (call_expression 
+                    function: (member_expression 
+                        property: (property_identifier) @function))
                 
                 (property_identifier) @property
+                (shorthand_property_identifier) @property
                 (identifier) @variable
                 
-                ["(" ")" "[" "]" "{" "}"] @punctuation
-                ["+" "-" "*" "/" "%" "=" "==" "===" "!=" "!==" "<" ">" "<=" ">=" "&&" "||" "!" "&" "|" "^" "<<" ">>"] @operator
+                ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
+                [";" "." "," ":"] @punctuation.delimiter
+                [
+                    "+" "-" "*" "/" "%" "**"
+                    "=" "+=" "-=" "*=" "/=" "%=" "**="
+                    "==" "===" "!=" "!==" "<" ">" "<=" ">="
+                    "&&" "||" "!" "??" 
+                    "&" "|" "^" "~" "<<" ">>" ">>>"
+                    "++""--" "..." "?." "=>" 
+                ] @operator
             "#,
             
             "bash" => r#"
                 (comment) @comment
                 (string) @string
                 (raw_string) @string
+                (ansi_c_string) @string
                 (number) @number
                 
                 [
                     "if" "then" "else" "elif" "fi"
-                    "for" "while" "do" "done" "break" "continue"
-                    "case" "esac" "in" "function" "return"
-                    "local" "export" "declare" "readonly"
-                    "test" "echo" "printf" "read"
+                    "case" "esac" "for" "while" "until"
+                    "do" "done" "select" "in"
+                    "function" "return" "break" "continue"
+                    "local" "readonly" "unset"
+                    "export" "declare" "typeset"
+                    "source" "alias" "unalias"
                 ] @keyword
                 
-                (command_name) @function
-                (variable_name) @variable
+                (function_definition name: (word) @function)
+                (command_name (word) @function)
                 
-                ["(" ")" "[" "]" "{" "}" "|" "&" ";" "&&" "||"] @punctuation
-                ["=" "==" "!=" "-eq" "-ne" "-lt" "-le" "-gt" "-ge"] @operator
+                (variable_name) @variable
+                ((word) @constant
+                    (#match? @constant "^[A-Z_]+$"))
+                
+                "$" @punctuation.special
+                ["(" ")" "[" "]" "{" "}" "[[" "]]"] @punctuation.bracket
+                [";" "&" "|" "||" "&&" ";;" ";&" ";;&"] @punctuation.delimiter
+                ["=" "+=" "-=" "*=" "/=" "%=" "**=" "&=" "|=" "^=" 
+                 "<<=" ">>=" "==" "!=" "<" ">" "-eq" "-ne" "-lt" 
+                 "-le" "-gt" "-ge"] @operator
             "#,
             
             "sql" => r#"
                 (comment) @comment
-                (string) @string
-                (number) @number
+                (marginalia) @comment
+                
+                (literal) @string
+                
+                ((literal) @number
+                 (#match? @number "^[-+]?\d+$"))
+                
+                ((literal) @float
+                 (#match? @float "^[-+]?\d*\.\d*$"))
                 
                 [
-                    "SELECT" "FROM" "WHERE" "JOIN" "INNER" "LEFT" "RIGHT" "FULL" "OUTER"
-                    "ON" "GROUP" "BY" "HAVING" "ORDER" "ASC" "DESC" "LIMIT" "OFFSET"
-                    "INSERT" "INTO" "VALUES" "UPDATE" "SET" "DELETE"
-                    "CREATE" "TABLE" "ALTER" "DROP" "INDEX"
-                    "PRIMARY" "KEY" "FOREIGN" "REFERENCES"
-                    "AND" "OR" "NOT" "IN" "LIKE" "BETWEEN" "IS" "NULL"
-                    "DISTINCT" "CASE" "WHEN" "THEN" "ELSE" "END"
-                    "UNION" "ALL" "AS" "WITH" "RECURSIVE"
-                    "QUALIFY" "WINDOW" "OVER" "PARTITION"
-                    "VARIANT" "OBJECT" "ARRAY" "INTEGER" "VARCHAR" "DATE"
-                    "TIMESTAMP" "BOOLEAN" "FLOAT" "DOUBLE" "NUMBER"
+                    (keyword_select) (keyword_from) (keyword_where) (keyword_and) (keyword_or)
+                    (keyword_not) (keyword_in) (keyword_like) (keyword_is) (keyword_null)
+                    (keyword_order) (keyword_by) (keyword_group) (keyword_having) (keyword_limit)
+                    (keyword_offset) (keyword_distinct) (keyword_as) (keyword_join) (keyword_left)
+                    (keyword_right) (keyword_inner) (keyword_outer) (keyword_full) (keyword_cross)
+                    (keyword_on) (keyword_union) (keyword_intersect) (keyword_except)
+                    (keyword_insert) (keyword_into) (keyword_values) (keyword_update) (keyword_set)
+                    (keyword_delete) (keyword_create) (keyword_table) (keyword_alter) (keyword_drop)
+                    (keyword_primary) (keyword_key) (keyword_foreign) (keyword_references)
+                    (keyword_constraint) (keyword_unique) (keyword_check) (keyword_default)
+                    (keyword_index) (keyword_view) (keyword_database) (keyword_schema)
+                    (keyword_if) (keyword_exists) (keyword_cascade) (keyword_restrict)
+                    (keyword_case) (keyword_when) (keyword_then) (keyword_else) (keyword_end)
+                    (keyword_begin) (keyword_commit) (keyword_rollback) (keyword_transaction)
                 ] @keyword
                 
-                (function_call name: (identifier) @function)
-                (identifier) @variable
+                [
+                    (keyword_int) (keyword_varchar) (keyword_char) (keyword_text) (keyword_boolean)
+                    (keyword_date) (keyword_time) (keyword_timestamp) (keyword_decimal) (keyword_float)
+                    (keyword_double) (keyword_numeric) (keyword_bigint) (keyword_smallint)
+                    (keyword_tinyint) (keyword_mediumint) (keyword_real) (keyword_binary)
+                    (keyword_varbinary) (keyword_json) (keyword_uuid)
+                ] @type
                 
-                ["(" ")" "," ";" "."] @punctuation
-                ["=" "!=" "<" ">" "<=" ">=" "+" "-" "*" "/" "%" "||"] @operator
+                [
+                    (keyword_true) (keyword_false)
+                ] @constant
+                
+                (field name: (identifier) @property)
+                (object_reference name: (identifier) @type)
+                (relation alias: (identifier) @variable)
+                (term alias: (identifier) @variable)
+                
+                (invocation (object_reference name: (identifier) @function))
+                
+                (all_fields) @operator
+                
+                ["+" "-" "/" "%" "^" ":=" "=" "<" "<=" "!=" ">=" ">" "<>"] @operator
+                ["(" ")"] @punctuation.bracket
+                [";" "," "."] @punctuation.delimiter
             "#,
             
             "json" => r#"
-                (string) @string
+                (string_content) @string
                 (number) @number
                 (true) @constant
                 (false) @constant
                 (null) @constant
                 
-                (pair key: (string) @property)
+                (pair key: (string (string_content) @property))
                 
-                ["{" "}" "[" "]" ":" ","] @punctuation
+                ["{" "}" "[" "]"] @punctuation.bracket
+                [":" ","] @punctuation.delimiter
             "#,
             
             "toml" => r#"
@@ -263,11 +320,15 @@ impl SyntaxHighlighter {
                 (integer) @number
                 (float) @number
                 (boolean) @constant
+                (local_date) @string
+                (local_date_time) @string
+                (local_time) @string
                 
                 (bare_key) @property
                 (quoted_key) @property
                 
-                ["[" "]" "=" "." ","] @punctuation
+                ["[" "]" "[[" "]]"] @punctuation.bracket
+                ["=" "." ","] @punctuation.delimiter
             "#,
             
             _ => return None,
@@ -277,13 +338,29 @@ impl SyntaxHighlighter {
     }
 
     pub fn update(&mut self, rope: &Rope) {
-        if !self.needs_update {
+        // Always clear tokens when updating to ensure fresh highlighting
+        self.tokens_by_line.clear();
+
+        // Handle empty rope to prevent panics
+        if rope.len_chars() == 0 {
+            self.tree = None;
+            self.needs_update = false;
             return;
         }
 
         let text = rope.to_string();
+        match File::create("/tmp/thyme_debug.log") {
+            Ok(mut file) => {
+                writeln!(file, "[DEBUG] Parsing language: {}, text_len: {}\n",
+                    self.language, text.len()).expect("Failed to write to debug log");
+            }
+            Err(e) => {
+                eprintln!("[ERROR] Failed to create debug log: {}", e);
+            }
+        }
         
-        if let Some(new_tree) = self.parser.parse(&text, self.tree.as_ref()) {
+        // Always re-parse the entire text for consistent highlighting
+        if let Some(new_tree) = self.parser.parse(&text, None) {
             self.tree = Some(new_tree);
             self.highlight_tree(rope);
         }
@@ -318,9 +395,14 @@ impl SyntaxHighlighter {
                     let start_byte = node.start_byte();
                     let end_byte = node.end_byte();
                     
-                    // Convert byte positions to character positions
-                    let start_char = text[..start_byte].chars().count();
-                    let end_char = start_char + text[start_byte..end_byte].chars().count();
+                    // Convert byte positions to character positions safely
+                    let start_char = self.safe_byte_to_char(rope, start_byte);
+                    let end_char = self.safe_byte_to_char(rope, end_byte);
+                    
+                    // Debug: skip invalid tokens
+                    if start_char >= end_char || start_char >= rope.len_chars() {
+                        continue;
+                    }
                     
                     // Determine token type from capture name
                     let capture_name = &query.capture_names()[capture.index as usize];
@@ -337,7 +419,7 @@ impl SyntaxHighlighter {
                         "parameter" => TokenType::Parameter,
                         "constant" => TokenType::Constant,
                         "namespace" => TokenType::Namespace,
-                        "punctuation" => TokenType::Punctuation,
+                        "punctuation" | "punctuation.bracket" | "punctuation.delimiter" | "punctuation.special" => TokenType::Punctuation,
                         "tag" => TokenType::Tag,
                         "attribute" => TokenType::Attribute,
                         _ => TokenType::Normal,
@@ -408,9 +490,17 @@ impl SyntaxHighlighter {
 
     pub fn mark_dirty(&mut self) {
         self.needs_update = true;
+        // Clear existing tokens to force fresh highlighting
+        self.tokens_by_line.clear();
     }
 
     pub fn force_update(&mut self) {
         self.needs_update = true;
+    }
+    
+    fn safe_byte_to_char(&self, rope: &Rope, byte_pos: usize) -> usize {
+        // Try to use rope's byte_to_char if available, otherwise fall back to manual conversion
+        // For ropey 1.6, byte_to_char should be available
+        rope.byte_to_char(byte_pos.min(rope.len_bytes()))
     }
 }
