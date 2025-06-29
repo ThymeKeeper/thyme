@@ -130,9 +130,39 @@ impl SyntaxHighlighter {
     fn create_highlight_query(language: &str, ts_language: Language) -> Option<Query> {
         let query_string = match language {
             "rust" => r#"
-                "fn" @keyword
-                "let" @keyword
+                (line_comment) @comment
+                (block_comment) @comment
+                
+                (string_literal) @string
+                (raw_string_literal) @string
+                (char_literal) @string
+                
+                (integer_literal) @number
+                (float_literal) @number
+                
+                (boolean_literal) @constant
+                
+                [
+                    "fn" "let" "mut" "const" "static" "if" "else" "while" "for"
+                    "loop" "match" "struct" "enum" "trait" "impl" "use" "mod"
+                    "pub" "return" "break" "continue" "unsafe" "async" "await"
+                ] @keyword
+                
+                (function_item name: (identifier) @function)
+                (call_expression function: (identifier) @function)
+                (macro_invocation macro: (identifier) @function.macro)
+                
+                (type_identifier) @type
+                (primitive_type) @type.builtin
+                
                 (identifier) @variable
+                
+                ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
+                ["." ";" ":" ","] @punctuation.delimiter
+                [
+                    "+" "-" "*" "/" "%" "=" "==" "!=" 
+                    "<" ">" "<=" ">=" "&&" "||" "!"
+                ] @operator
             "#,
             
             "python" => r#"
@@ -210,7 +240,7 @@ impl SyntaxHighlighter {
                     "==" "===" "!=" "!==" "<" ">" "<=" ">="
                     "&&" "||" "!" "??" 
                     "&" "|" "^" "~" "<<" ">>" ">>>"
-                    "++""--" "..." "?." "=>" 
+                    "++" "--" "..." "?." "=>" 
                 ] @operator
             "#,
             
@@ -250,14 +280,29 @@ impl SyntaxHighlighter {
                 (comment) @comment
                 (marginalia) @comment
                 
-                (literal) @string
+                ;; String literals
+                ((literal) @string
+                  (#match? @string "^['\"].*['\"]$"))
                 
+                ;; Number literals - only match numbers, not strings
                 ((literal) @number
-                 (#match? @number "^[-+]?\d+$"))
+                  (#match? @number "^[0-9]+$"))
+                  
+                ((literal) @number
+                  (#match? @number "^[0-9]*\\.[0-9]+$"))
                 
-                ((literal) @float
-                 (#match? @float "^[-+]?\d*\.\d*$"))
+                ;; Boolean and null literals
+                (keyword_true) @constant
+                (keyword_false) @constant
+                (keyword_null) @constant
                 
+                ;; Modern SQL keywords - catch QUALIFY as identifier
+                ((identifier) @keyword
+                  (#eq? @keyword "QUALIFY"))
+                ((identifier) @keyword
+                  (#eq? @keyword "qualify"))
+                
+                ;; Core SQL keywords
                 [
                     (keyword_select) (keyword_from) (keyword_where) (keyword_and) (keyword_or)
                     (keyword_not) (keyword_in) (keyword_like) (keyword_is) (keyword_null)
@@ -273,8 +318,10 @@ impl SyntaxHighlighter {
                     (keyword_if) (keyword_exists) (keyword_cascade) (keyword_restrict)
                     (keyword_case) (keyword_when) (keyword_then) (keyword_else) (keyword_end)
                     (keyword_begin) (keyword_commit) (keyword_rollback) (keyword_transaction)
+                    (keyword_all) (keyword_any) (keyword_some)
                 ] @keyword
                 
+                ;; SQL data types
                 [
                     (keyword_int) (keyword_varchar) (keyword_char) (keyword_text) (keyword_boolean)
                     (keyword_date) (keyword_time) (keyword_timestamp) (keyword_decimal) (keyword_float)
@@ -283,20 +330,20 @@ impl SyntaxHighlighter {
                     (keyword_varbinary) (keyword_json) (keyword_uuid)
                 ] @type
                 
-                [
-                    (keyword_true) (keyword_false)
-                ] @constant
-                
+                ;; Identifiers and references
                 (field name: (identifier) @property)
                 (object_reference name: (identifier) @type)
                 (relation alias: (identifier) @variable)
                 (term alias: (identifier) @variable)
                 
+                ;; Function calls
                 (invocation (object_reference name: (identifier) @function))
                 
+                ;; Operators
                 (all_fields) @operator
-                
                 ["+" "-" "/" "%" "^" ":=" "=" "<" "<=" "!=" ">=" ">" "<>"] @operator
+                
+                ;; Punctuation
                 ["(" ")"] @punctuation.bracket
                 [";" "," "."] @punctuation.delimiter
             "#,
