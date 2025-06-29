@@ -1,0 +1,9 @@
+# Mark tree-sitter-sql as vendored code so it doesn't count toward language stats
+tree-sitter-sql/* linguist-vendored
+
+# Or alternatively, mark specific files as generated
+tree-sitter-sql/src/parser.c linguist-generated
+tree-sitter-sql/src/scanner.c linguist-generated
+
+# Ensure Rust files are properly detected
+*.rs linguist-language=Rust
