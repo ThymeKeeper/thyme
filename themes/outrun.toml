@@ -1,0 +1,60 @@
+name = "Outrun"
+
+[colors]
+# Editor colors
+background = "#0c0c0c"
+foreground = "#d9e6f2"
+cursor = "#f2ca27"
+selection = "#2a2139"
+line_number = "#5a5977"
+current_line = "#1a1625"
+
+# Syntax colors
+keyword = "#ff16b0"        # Hot Pink
+string = "#7df46a"         # Neon Green
+comment = "#5a5977"        # Gray Purple
+number = "#ff9f43"         # Orange
+operator = "#7df9ff"       # Cyan
+identifier = "#d9e6f2"     # Off White
+type_ = "#f2ca27"          # Yellow
+function = "#7df9ff"       # Cyan
+variable = "#d9e6f2"       # Off White
+property = "#9d79d6"       # Purple
+parameter = "#f4f3ee"      # Cream
+constant = "#ff9f43"       # Orange
+namespace = "#ff16b0"      # Hot Pink
+punctuation = "#d9e6f2"    # Off White
+tag = "#ff5277"            # Pink Red
+attribute = "#7df46a"      # Neon Green
+normal = "#d9e6f2"         # Off White
+
+# UI colors
+status_bar_bg = "#1a1625"
+status_bar_fg = "#d9e6f2"
+border = "#5a5977"
+border_active = "#7df9ff"
+modal_bg = "#1a1625"
+modal_fg = "#d9e6f2"
+selection_bg = "#7df9ff"
+selection_fg = "#0c0c0c"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

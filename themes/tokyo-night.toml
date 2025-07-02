@@ -1,0 +1,60 @@
+name = "Tokyo Night"
+
+[colors]
+# Editor colors
+background = "#1a1b26"
+foreground = "#c0caf5"
+cursor = "#c0caf5"
+selection = "#283457"
+line_number = "#565f89"
+current_line = "#24283b"
+
+# Syntax colors
+keyword = "#9d7cd8"        # Purple
+string = "#9ece6a"         # Green
+comment = "#565f89"        # Blue Gray
+number = "#ff9e64"         # Orange
+operator = "#89ddff"       # Cyan
+identifier = "#c0caf5"     # Blue Gray
+type_ = "#7aa2f7"          # Blue
+function = "#7dcfff"       # Cyan
+variable = "#c0caf5"       # Blue Gray
+property = "#7aa2f7"       # Blue
+parameter = "#e0af68"      # Yellow
+constant = "#ff9e64"       # Orange
+namespace = "#9d7cd8"      # Purple
+punctuation = "#c0caf5"    # Blue Gray
+tag = "#f7768e"            # Red
+attribute = "#bb9af7"      # Light Purple
+normal = "#c0caf5"         # Blue Gray
+
+# UI colors
+status_bar_bg = "#16161e"
+status_bar_fg = "#c0caf5"
+border = "#565f89"
+border_active = "#7aa2f7"
+modal_bg = "#16161e"
+modal_fg = "#c0caf5"
+selection_bg = "#7aa2f7"
+selection_fg = "#1a1b26"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

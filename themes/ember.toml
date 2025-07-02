@@ -1,0 +1,60 @@
+name = "Ember"
+
+[colors]
+# Editor colors
+background = "#1c1611"
+foreground = "#ddd6c1"
+cursor = "#f39c12"
+selection = "#2d251a"
+line_number = "#6b5b47"
+current_line = "#241e16"
+
+# Syntax colors
+keyword = "#e67e22"        # Orange
+string = "#a3be8c"         # Muted Green
+comment = "#6b5b47"        # Brown Gray
+number = "#f39c12"         # Bright Orange
+operator = "#e74c3c"       # Red
+identifier = "#ddd6c1"     # Cream
+type_ = "#f1c40f"          # Yellow
+function = "#3498db"       # Blue
+variable = "#ddd6c1"       # Cream
+property = "#1abc9c"       # Teal
+parameter = "#ecf0f1"      # Light Gray
+constant = "#f39c12"       # Bright Orange
+namespace = "#e67e22"      # Orange
+punctuation = "#ddd6c1"    # Cream
+tag = "#e74c3c"            # Red
+attribute = "#a3be8c"      # Muted Green
+normal = "#ddd6c1"         # Cream
+
+# UI colors
+status_bar_bg = "#241e16"
+status_bar_fg = "#ddd6c1"
+border = "#6b5b47"
+border_active = "#e67e22"
+modal_bg = "#241e16"
+modal_fg = "#ddd6c1"
+selection_bg = "#e67e22"
+selection_fg = "#1c1611"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

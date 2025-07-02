@@ -1,0 +1,60 @@
+name = "Oxocarbon"
+
+[colors]
+# Editor colors
+background = "#161616"
+foreground = "#f2f4f8"
+cursor = "#f2f4f8"
+selection = "#262626"
+line_number = "#6f6f6f"
+current_line = "#262626"
+
+# Syntax colors
+keyword = "#ff7eb6"        # Pink
+string = "#42be65"         # Green
+comment = "#6f6f6f"        # Gray
+number = "#3ddbd9"         # Cyan
+operator = "#be95ff"       # Purple
+identifier = "#f2f4f8"     # White
+type_ = "#78a9ff"          # Blue
+function = "#ff7eb6"       # Pink
+variable = "#f2f4f8"       # White
+property = "#3ddbd9"       # Cyan
+parameter = "#ff832b"      # Orange
+constant = "#be95ff"       # Purple
+namespace = "#78a9ff"      # Blue
+punctuation = "#f2f4f8"    # White
+tag = "#ff7eb6"            # Pink
+attribute = "#42be65"      # Green
+normal = "#f2f4f8"         # White
+
+# UI colors
+status_bar_bg = "#262626"
+status_bar_fg = "#f2f4f8"
+border = "#6f6f6f"
+border_active = "#78a9ff"
+modal_bg = "#262626"
+modal_fg = "#f2f4f8"
+selection_bg = "#78a9ff"
+selection_fg = "#161616"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

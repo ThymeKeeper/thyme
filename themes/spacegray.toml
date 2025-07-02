@@ -1,0 +1,60 @@
+name = "Spacegray"
+
+[colors]
+# Editor colors
+background = "#2c2d30"
+foreground = "#b7b8b9"
+cursor = "#b7b8b9"
+selection = "#4e5a65"
+line_number = "#65737e"
+current_line = "#343741"
+
+# Syntax colors
+keyword = "#9a93e1"        # Purple
+string = "#96ceb4"         # Mint Green
+comment = "#65737e"        # Gray
+number = "#d4976c"         # Orange
+operator = "#79c0ff"       # Light Blue
+identifier = "#b7b8b9"     # Light Gray
+type_ = "#f4d03f"          # Yellow
+function = "#79c0ff"       # Light Blue
+variable = "#b7b8b9"       # Light Gray
+property = "#7fdbca"       # Teal
+parameter = "#dfe6e9"      # Very Light Gray
+constant = "#d4976c"       # Orange
+namespace = "#9a93e1"      # Purple
+punctuation = "#b7b8b9"    # Light Gray
+tag = "#e74c3c"            # Red
+attribute = "#96ceb4"      # Mint Green
+normal = "#b7b8b9"         # Light Gray
+
+# UI colors
+status_bar_bg = "#343741"
+status_bar_fg = "#b7b8b9"
+border = "#65737e"
+border_active = "#79c0ff"
+modal_bg = "#343741"
+modal_fg = "#b7b8b9"
+selection_bg = "#79c0ff"
+selection_fg = "#2c2d30"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

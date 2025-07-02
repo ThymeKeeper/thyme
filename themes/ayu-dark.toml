@@ -1,0 +1,60 @@
+name = "Ayu Dark"
+
+[colors]
+# Editor colors
+background = "#0a0e14"
+foreground = "#b3b1ad"
+cursor = "#b3b1ad"
+selection = "#253340"
+line_number = "#4d5566"
+current_line = "#131721"
+
+# Syntax colors
+keyword = "#ff8f40"        # Orange
+string = "#aad94c"         # Green
+comment = "#626a73"        # Gray
+number = "#d2a6ff"         # Purple
+operator = "#f29668"       # Light Orange
+identifier = "#b3b1ad"     # Light Gray
+type_ = "#36a3d9"          # Blue
+function = "#ffb454"       # Yellow
+variable = "#b3b1ad"       # Light Gray
+property = "#39bae6"       # Cyan
+parameter = "#e6b673"      # Pale Orange
+constant = "#ff8f40"       # Orange
+namespace = "#ff8f40"      # Orange
+punctuation = "#bfbdb6"    # Light Gray
+tag = "#36a3d9"            # Blue
+attribute = "#aad94c"      # Green
+normal = "#b3b1ad"         # Light Gray
+
+# UI colors
+status_bar_bg = "#0d1016"
+status_bar_fg = "#b3b1ad"
+border = "#4d5566"
+border_active = "#36a3d9"
+modal_bg = "#0d1016"
+modal_fg = "#b3b1ad"
+selection_bg = "#36a3d9"
+selection_fg = "#0a0e14"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

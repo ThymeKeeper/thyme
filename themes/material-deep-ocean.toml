@@ -1,0 +1,60 @@
+name = "Material Deep Ocean"
+
+[colors]
+# Editor colors
+background = "#0f111a"
+foreground = "#8f93a2"
+cursor = "#ffcc02"
+selection = "#1f2233"
+line_number = "#464b5d"
+current_line = "#151720"
+
+# Syntax colors
+keyword = "#c792ea"        # Purple
+string = "#c3e88d"         # Green
+comment = "#4a4a4a"        # Gray
+number = "#f78c6c"         # Orange
+operator = "#89ddff"       # Cyan
+identifier = "#8f93a2"     # Gray
+type_ = "#ffcb6b"          # Yellow
+function = "#82aaff"       # Blue
+variable = "#8f93a2"       # Gray
+property = "#89ddff"       # Cyan
+parameter = "#eeffff"      # White
+constant = "#f78c6c"       # Orange
+namespace = "#c792ea"      # Purple
+punctuation = "#8f93a2"    # Gray
+tag = "#ff5370"            # Red
+attribute = "#c3e88d"      # Green
+normal = "#8f93a2"         # Gray
+
+# UI colors
+status_bar_bg = "#151720"
+status_bar_fg = "#8f93a2"
+border = "#464b5d"
+border_active = "#82aaff"
+modal_bg = "#151720"
+modal_fg = "#8f93a2"
+selection_bg = "#82aaff"
+selection_fg = "#0f111a"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

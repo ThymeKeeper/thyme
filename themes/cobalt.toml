@@ -1,0 +1,60 @@
+name = "Cobalt"
+
+[colors]
+# Editor colors
+background = "#002240"
+foreground = "#c0c5ce"
+cursor = "#c0c5ce"
+selection = "#003950"
+line_number = "#5f676a"
+current_line = "#083358"
+
+# Syntax colors
+keyword = "#ff9e59"        # Orange
+string = "#5beb9a"         # Light Green
+comment = "#4f5b66"        # Gray
+number = "#d08770"         # Salmon
+operator = "#d08770"       # Salmon
+identifier = "#c0c5ce"     # Light Gray
+type_ = "#a3685a"          # Brown
+function = "#5bb2ed"       # Cobalt
+variable = "#c0c5ce"       # Light Gray
+property = "#5bb4cc"       # Light Blue
+parameter = "#ecbbbf"      # Pale Red
+constant = "#d08770"       # Salmon
+namespace = "#ff9e59"      # Orange
+punctuation = "#c0c5ce"    # Light Gray
+tag = "#5bb2ed"            # Cobalt
+attribute = "#a3685a"      # Brown
+normal = "#c0c5ce"         # Light Gray
+
+# UI colors
+status_bar_bg = "#083358"
+status_bar_fg = "#c0c5ce"
+border = "#5f676a"
+border_active = "#5bb2ed"
+modal_bg = "#083358"
+modal_fg = "#c0c5ce"
+selection_bg = "#5bb2ed"
+selection_fg = "#002240"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

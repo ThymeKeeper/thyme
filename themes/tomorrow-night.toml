@@ -1,0 +1,60 @@
+name = "Tomorrow Night"
+
+[colors]
+# Editor colors
+background = "#1d1f21"
+foreground = "#c5c8c6"
+cursor = "#c5c8c6"
+selection = "#373b41"
+line_number = "#969896"
+current_line = "#282a2e"
+
+# Syntax colors
+keyword = "#b294bb"        # Purple
+string = "#b5bd68"         # Green
+comment = "#969896"        # Gray
+number = "#de935f"         # Orange
+operator = "#8abeb7"       # Cyan
+identifier = "#c5c8c6"     # White
+type_ = "#f0c674"          # Yellow
+function = "#81a2be"       # Blue
+variable = "#c5c8c6"       # White
+property = "#8abeb7"       # Cyan
+parameter = "#cc6666"      # Red
+constant = "#de935f"       # Orange
+namespace = "#b294bb"      # Purple
+punctuation = "#c5c8c6"    # White
+tag = "#cc6666"            # Red
+attribute = "#f0c674"      # Yellow
+normal = "#c5c8c6"         # White
+
+# UI colors
+status_bar_bg = "#373b41"
+status_bar_fg = "#c5c8c6"
+border = "#969896"
+border_active = "#81a2be"
+modal_bg = "#373b41"
+modal_fg = "#c5c8c6"
+selection_bg = "#81a2be"
+selection_fg = "#1d1f21"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

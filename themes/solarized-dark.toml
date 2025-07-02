@@ -1,0 +1,60 @@
+name = "Solarized Dark"
+
+[colors]
+# Editor colors
+background = "#002b36"
+foreground = "#839496"
+cursor = "#839496"
+selection = "#073642"
+line_number = "#586e75"
+current_line = "#073642"
+
+# Syntax colors
+keyword = "#859900"        # Green
+string = "#2aa198"         # Cyan
+comment = "#586e75"        # Comment
+number = "#d33682"         # Magenta
+operator = "#839496"       # Base0
+identifier = "#839496"     # Base0
+type_ = "#b58900"          # Yellow
+function = "#268bd2"       # Blue
+variable = "#839496"       # Base0
+property = "#2aa198"       # Cyan
+parameter = "#cb4b16"      # Orange
+constant = "#d33682"       # Magenta
+namespace = "#859900"      # Green
+punctuation = "#657b83"    # Base00
+tag = "#859900"            # Green
+attribute = "#b58900"      # Yellow
+normal = "#839496"         # Base0
+
+# UI colors
+status_bar_bg = "#073642"
+status_bar_fg = "#839496"
+border = "#586e75"
+border_active = "#268bd2"
+modal_bg = "#073642"
+modal_fg = "#839496"
+selection_bg = "#268bd2"
+selection_fg = "#002b36"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

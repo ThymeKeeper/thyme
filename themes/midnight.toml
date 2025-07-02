@@ -1,0 +1,60 @@
+name = "Midnight"
+
+[colors]
+# Editor colors
+background = "#0d1117"
+foreground = "#c9d1d9"
+cursor = "#c9d1d9"
+selection = "#21262d"
+line_number = "#484f58"
+current_line = "#161b22"
+
+# Syntax colors
+keyword = "#b392f0"        # Light Purple
+string = "#9ecbff"         # Light Blue
+comment = "#6a737d"        # Gray
+number = "#79c0ff"         # Cyan
+operator = "#ff7b72"       # Light Red
+identifier = "#c9d1d9"     # Off White
+type_ = "#ffa657"          # Orange
+function = "#d2a8ff"       # Purple
+variable = "#c9d1d9"       # Off White
+property = "#7ee787"       # Green
+parameter = "#f0f6fc"      # Very Light Gray
+constant = "#ffa657"       # Orange
+namespace = "#b392f0"      # Light Purple
+punctuation = "#c9d1d9"    # Off White
+tag = "#ff7b72"            # Light Red
+attribute = "#7ee787"      # Green
+normal = "#c9d1d9"         # Off White
+
+# UI colors
+status_bar_bg = "#161b22"
+status_bar_fg = "#c9d1d9"
+border = "#484f58"
+border_active = "#b392f0"
+modal_bg = "#161b22"
+modal_fg = "#c9d1d9"
+selection_bg = "#b392f0"
+selection_fg = "#0d1117"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

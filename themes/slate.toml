@@ -1,0 +1,60 @@
+name = "Slate"
+
+[colors]
+# Editor colors
+background = "#1e293b"
+foreground = "#cbd5e1"
+cursor = "#cbd5e1"
+selection = "#334155"
+line_number = "#64748b"
+current_line = "#334155"
+
+# Syntax colors
+keyword = "#a78bfa"        # Purple
+string = "#6ee7b7"         # Green
+comment = "#64748b"        # Slate Gray
+number = "#fbbf24"         # Amber
+operator = "#38bdf8"       # Sky Blue
+identifier = "#cbd5e1"     # Slate
+type_ = "#fbbf24"          # Amber
+function = "#60a5fa"       # Blue
+variable = "#cbd5e1"       # Slate
+property = "#34d399"       # Emerald
+parameter = "#e2e8f0"      # Light Slate
+constant = "#f97316"       # Orange
+namespace = "#a78bfa"      # Purple
+punctuation = "#cbd5e1"    # Slate
+tag = "#f472b6"            # Pink
+attribute = "#6ee7b7"      # Green
+normal = "#cbd5e1"         # Slate
+
+# UI colors
+status_bar_bg = "#334155"
+status_bar_fg = "#cbd5e1"
+border = "#64748b"
+border_active = "#60a5fa"
+modal_bg = "#334155"
+modal_fg = "#cbd5e1"
+selection_bg = "#60a5fa"
+selection_fg = "#1e293b"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

@@ -1,0 +1,60 @@
+name = "Catppuccin Mocha"
+
+[colors]
+# Editor colors
+background = "#1e1e2e"
+foreground = "#cdd6f4"
+cursor = "#f5e0dc"
+selection = "#585b70"
+line_number = "#6c7086"
+current_line = "#313244"
+
+# Syntax colors
+keyword = "#cba6f7"        # Mauve
+string = "#a6e3a1"         # Green
+comment = "#6c7086"        # Overlay1
+number = "#fab387"         # Peach
+operator = "#89dceb"       # Sky
+identifier = "#cdd6f4"     # Text
+type_ = "#f38ba8"          # Pink
+function = "#89b4fa"       # Blue
+variable = "#cdd6f4"       # Text
+property = "#94e2d5"       # Teal
+parameter = "#f9e2af"      # Yellow
+constant = "#fab387"       # Peach
+namespace = "#cba6f7"      # Mauve
+punctuation = "#cdd6f4"    # Text
+tag = "#f38ba8"            # Pink
+attribute = "#a6e3a1"      # Green
+normal = "#cdd6f4"         # Text
+
+# UI colors
+status_bar_bg = "#313244"
+status_bar_fg = "#cdd6f4"
+border = "#6c7086"
+border_active = "#89b4fa"
+modal_bg = "#313244"
+modal_fg = "#cdd6f4"
+selection_bg = "#89b4fa"
+selection_fg = "#1e1e2e"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

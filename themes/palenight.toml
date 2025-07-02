@@ -1,0 +1,60 @@
+name = "Palenight"
+
+[colors]
+# Editor colors
+background = "#292d3e"
+foreground = "#a6accd"
+cursor = "#ffcc02"
+selection = "#3e4451"
+line_number = "#676e95"
+current_line = "#2f334d"
+
+# Syntax colors
+keyword = "#c792ea"        # Purple
+string = "#c3e88d"         # Green
+comment = "#697098"        # Gray Purple
+number = "#f78c6c"         # Orange
+operator = "#89ddff"       # Cyan
+identifier = "#a6accd"     # Light Purple Gray
+type_ = "#ffcb6b"          # Yellow
+function = "#82aaff"       # Blue
+variable = "#a6accd"       # Light Purple Gray
+property = "#89ddff"       # Cyan
+parameter = "#eeffff"      # White
+constant = "#f78c6c"       # Orange
+namespace = "#c792ea"      # Purple
+punctuation = "#a6accd"    # Light Purple Gray
+tag = "#ff5370"            # Red
+attribute = "#c3e88d"      # Green
+normal = "#a6accd"         # Light Purple Gray
+
+# UI colors
+status_bar_bg = "#2f334d"
+status_bar_fg = "#a6accd"
+border = "#676e95"
+border_active = "#82aaff"
+modal_bg = "#2f334d"
+modal_fg = "#a6accd"
+selection_bg = "#82aaff"
+selection_fg = "#292d3e"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

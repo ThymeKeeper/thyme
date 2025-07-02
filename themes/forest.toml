@@ -1,0 +1,60 @@
+name = "Forest"
+
+[colors]
+# Editor colors
+background = "#1b2224"
+foreground = "#d0d3d4"
+cursor = "#d0d3d4"
+selection = "#2d3a3e"
+line_number = "#6b7a7f"
+current_line = "#232a2c"
+
+# Syntax colors
+keyword = "#a9b665"        # Sage Green
+string = "#83a598"         # Light Blue
+comment = "#6b7a7f"        # Gray
+number = "#d8a657"         # Gold
+operator = "#7daea3"       # Teal
+identifier = "#d0d3d4"     # Light Gray
+type_ = "#d8a657"          # Gold
+function = "#89b482"       # Light Green
+variable = "#d0d3d4"       # Light Gray
+property = "#7daea3"       # Teal
+parameter = "#e2cca9"      # Beige
+constant = "#d8a657"       # Gold
+namespace = "#a9b665"      # Sage Green
+punctuation = "#d0d3d4"    # Light Gray
+tag = "#ea6962"            # Red
+attribute = "#89b482"      # Light Green
+normal = "#d0d3d4"         # Light Gray
+
+# UI colors
+status_bar_bg = "#232a2c"
+status_bar_fg = "#d0d3d4"
+border = "#6b7a7f"
+border_active = "#89b482"
+modal_bg = "#232a2c"
+modal_fg = "#d0d3d4"
+selection_bg = "#89b482"
+selection_fg = "#1b2224"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

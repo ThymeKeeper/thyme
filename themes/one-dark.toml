@@ -1,0 +1,60 @@
+name = "One Dark"
+
+[colors]
+# Editor colors
+background = "#282c34"
+foreground = "#abb2bf"
+cursor = "#528bff"
+selection = "#3e4451"
+line_number = "#5c6370"
+current_line = "#2c313c"
+
+# Syntax colors
+keyword = "#c678dd"        # Purple
+string = "#98c379"         # Green
+comment = "#5c6370"        # Gray
+number = "#d19a66"         # Orange
+operator = "#56b6c2"       # Cyan
+identifier = "#abb2bf"     # Default
+type_ = "#e06c75"          # Red
+function = "#61afef"       # Blue
+variable = "#e06c75"       # Red
+property = "#d19a66"       # Orange
+parameter = "#e06c75"      # Red
+constant = "#d19a66"       # Orange
+namespace = "#c678dd"      # Purple
+punctuation = "#abb2bf"    # Default
+tag = "#e06c75"            # Red
+attribute = "#d19a66"      # Orange
+normal = "#abb2bf"         # Default
+
+# UI colors
+status_bar_bg = "#21252b"
+status_bar_fg = "#abb2bf"
+border = "#3e4451"
+border_active = "#528bff"
+modal_bg = "#21252b"
+modal_fg = "#abb2bf"
+selection_bg = "#528bff"
+selection_fg = "#282c34"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

@@ -1,0 +1,60 @@
+name = "Dracula"
+
+[colors]
+# Editor colors
+background = "#282a36"
+foreground = "#f8f8f2"
+cursor = "#f8f8f2"
+selection = "#44475a"
+line_number = "#6272a4"
+current_line = "#44475a"
+
+# Syntax colors
+keyword = "#ff79c6"        # Pink
+string = "#f1fa8c"         # Yellow
+comment = "#6272a4"        # Comment Purple
+number = "#bd93f9"         # Purple
+operator = "#ff79c6"       # Pink
+identifier = "#f8f8f2"     # White
+type_ = "#8be9fd"          # Cyan
+function = "#50fa7b"       # Green
+variable = "#f8f8f2"       # White
+property = "#50fa7b"       # Green
+parameter = "#ffb86c"      # Orange
+constant = "#bd93f9"       # Purple
+namespace = "#ff79c6"      # Pink
+punctuation = "#f8f8f2"    # White
+tag = "#ff79c6"            # Pink
+attribute = "#50fa7b"      # Green
+normal = "#f8f8f2"         # White
+
+# UI colors
+status_bar_bg = "#44475a"
+status_bar_fg = "#f8f8f2"
+border = "#6272a4"
+border_active = "#ff79c6"
+modal_bg = "#44475a"
+modal_fg = "#f8f8f2"
+selection_bg = "#ff79c6"
+selection_fg = "#282a36"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

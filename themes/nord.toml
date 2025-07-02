@@ -1,0 +1,60 @@
+name = "Nord"
+
+[colors]
+# Editor colors
+background = "#2e3440"
+foreground = "#d8dee9"
+cursor = "#d8dee9"
+selection = "#434c5e"
+line_number = "#4c566a"
+current_line = "#3b4252"
+
+# Syntax colors
+keyword = "#81a1c1"        # Nord9 - Blue
+string = "#a3be8c"         # Nord14 - Green
+comment = "#616e88"        # Nord3 variant
+number = "#b48ead"         # Nord15 - Purple
+operator = "#88c0d0"       # Nord8 - Frost
+identifier = "#d8dee9"     # Nord4 - Snow Storm
+type_ = "#8fbcbb"          # Nord7 - Frost
+function = "#88c0d0"       # Nord8 - Frost
+variable = "#d8dee9"       # Nord4 - Snow Storm
+property = "#5e81ac"       # Nord10 - Blue
+parameter = "#eceff4"      # Nord6 - Snow Storm
+constant = "#d08770"       # Nord12 - Orange
+namespace = "#81a1c1"      # Nord9 - Blue
+punctuation = "#eceff4"    # Nord6 - Snow Storm
+tag = "#81a1c1"            # Nord9 - Blue
+attribute = "#d08770"      # Nord12 - Orange
+normal = "#d8dee9"         # Nord4 - Snow Storm
+
+# UI colors
+status_bar_bg = "#3b4252"
+status_bar_fg = "#d8dee9"
+border = "#4c566a"
+border_active = "#88c0d0"
+modal_bg = "#3b4252"
+modal_fg = "#d8dee9"
+selection_bg = "#88c0d0"
+selection_fg = "#2e3440"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []

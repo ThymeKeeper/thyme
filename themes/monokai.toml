@@ -1,0 +1,60 @@
+name = "Monokai"
+
+[colors]
+# Editor colors
+background = "#272822"
+foreground = "#f8f8f2"
+cursor = "#f8f8f2"
+selection = "#49483e"
+line_number = "#75715e"
+current_line = "#3e3d32"
+
+# Syntax colors
+keyword = "#f92672"        # Pink
+string = "#e6db74"         # Yellow
+comment = "#75715e"        # Gray
+number = "#ae81ff"         # Purple
+operator = "#f8f8f2"       # White
+identifier = "#f8f8f2"     # White
+type_ = "#66d9ef"          # Cyan
+function = "#a6e22e"       # Green
+variable = "#f8f8f2"       # White
+property = "#a6e22e"       # Green
+parameter = "#fd971f"      # Orange
+constant = "#ae81ff"       # Purple
+namespace = "#f92672"      # Pink
+punctuation = "#f8f8f2"    # White
+tag = "#f92672"            # Pink
+attribute = "#a6e22e"      # Green
+normal = "#f8f8f2"         # White
+
+# UI colors
+status_bar_bg = "#49483e"
+status_bar_fg = "#f8f8f2"
+border = "#75715e"
+border_active = "#66d9ef"
+modal_bg = "#49483e"
+modal_fg = "#f8f8f2"
+selection_bg = "#66d9ef"
+selection_fg = "#272822"
+
+[styles]
+# Text styles (bold, italic, underline, etc.)
+# Default: no text styles (all regular text)
+keyword = []
+string = []
+comment = []
+number = []
+operator = []
+identifier = []
+type_ = []
+function = []
+variable = []
+property = []
+parameter = []
+constant = []
+namespace = []
+punctuation = []
+tag = []
+attribute = []
+normal = []
