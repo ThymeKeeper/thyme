@@ -3,6 +3,7 @@
 use crate::{
     buffer::Buffer, 
     config::Config, 
+    cursor::Position,
     editor::Editor, 
     syntax::TokenType,
     text_utils::wrap_line
@@ -279,7 +280,8 @@ impl Ui {
         if let Some((themes, selected_index)) = editor.get_theme_selection_info() {
             // Calculate modal size and position with bounds checking
             let modal_width = 60;
-            let max_modal_height = (themes.len() as u16).min(15) + 4; // +4 for borders and title, max 15 items visible
+            let max_visible_items = 15;
+            let max_modal_height = max_visible_items.min(themes.len()) as u16 + 4; // +4 for borders and title
             
             let area = f.area();
             // Ensure modal doesn't exceed screen bounds
@@ -301,15 +303,20 @@ impl Ui {
             let selection_fg = config.theme.parse_color(&config.theme.colors.selection_fg);
             let border_color = config.theme.parse_color(&config.theme.colors.border_active);
 
-            // Create theme list items with numbering
-            let items: Vec<ListItem> = themes
+            // Calculate scrolling
+            let scroll_offset = editor.theme_selection_scroll_offset;
+            let visible_end = (scroll_offset + max_visible_items).min(themes.len());
+            
+            // Create theme list items with numbering (only visible items)
+            let items: Vec<ListItem> = themes[scroll_offset..visible_end]
                 .iter()
                 .enumerate()
-                .map(|(i, (_, display_name))| {
-                    let number = i + 1;
+                .map(|(visible_i, (_, display_name))| {
+                    let actual_i = scroll_offset + visible_i;
+                    let number = actual_i + 1;
                     let text = format!("{}. {}", number, display_name);
                     
-                    if i == selected_index {
+                    if actual_i == selected_index {
                         ListItem::new(text).style(
                             Style::default()
                                 .bg(selection_bg)
@@ -322,13 +329,27 @@ impl Ui {
                 })
                 .collect();
 
+            // Create scroll indicator text
+            let has_more_above = scroll_offset > 0;
+            let has_more_below = visible_end < themes.len();
+            let scroll_info = if has_more_above || has_more_below {
+                let mut info = String::new();
+                if has_more_above { info.push_str("▲ "); }
+                info.push_str(&format!("{}-{}/{}", scroll_offset + 1, visible_end, themes.len()));
+                if has_more_below { info.push_str(" ▼"); }
+                format!(" [{}]", info)
+            } else {
+                String::new()
+            };
+
             // Create the list widget
+            let title = format!("Select Theme (↑↓ to navigate, Enter to select, Esc to cancel){}", scroll_info);
             let list = List::new(items)
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
                         .border_style(Style::default().fg(border_color))
-                        .title("Select Theme (↑↓ to navigate, Enter to select, Esc to cancel)")
+                        .title(title)
                         .style(Style::default().bg(modal_bg))
                 )
                 .style(Style::default().fg(modal_fg));
@@ -350,8 +371,9 @@ impl Ui {
             };
 
             let current_theme = &config.theme.name;
+            let visible_count = visible_end - scroll_offset;
             let instruction = Paragraph::new(
-                format!("Current: {} | Press 1-{} for quick select", current_theme, themes.len().min(9))
+                format!("Current: {} | Press 1-{} for quick select", current_theme, visible_count.min(9))
             )
             .style(Style::default().fg(Color::Gray))
             .alignment(Alignment::Center);
@@ -446,14 +468,30 @@ impl Ui {
         segment_start: usize,
         config: &Config
     ) -> Line<'static> {
+        let text_chars: Vec<char> = text.chars().collect();
+        let text_len = text_chars.len();
+        let segment_end = segment_start + text_len;
+        
+        // Get selection range if any
+        let selection_range = buffer.cursor.get_selection_range();
+        
+        // For character-precise selection, we need to split text at selection boundaries
+        if let Some((sel_start, sel_end)) = selection_range {
+            return self.apply_highlighting_with_precise_selection(
+                text, buffer, line_idx, segment_start, sel_start, sel_end, config
+            );
+        }
+        
+        // No selection - apply normal syntax highlighting
         if let Some(tokens) = buffer.syntax_highlighter.get_line_tokens(line_idx) {
             let mut spans = Vec::new();
             let mut last_end = 0;
-            let text_chars: Vec<char> = text.chars().collect();
-            let text_len = text_chars.len();
-            let segment_end = segment_start + text_len;
 
-            for token in tokens {
+            // Sort tokens by start position to ensure proper rendering order
+            let mut sorted_tokens = tokens.clone();
+            sorted_tokens.sort_by_key(|token| token.start);
+
+            for token in &sorted_tokens {
                 // Skip tokens that are entirely outside this segment
                 if token.end <= segment_start || token.start >= segment_end {
                     continue;
@@ -517,41 +555,36 @@ impl Ui {
                 Line::from(spans)
             }
         } else {
+            // No syntax highlighting, return as normal text
             let normal_color = config.theme.parse_color(&config.theme.colors.normal);
             Line::styled(text, Style::default().fg(normal_color))
         }
     }
 
     fn get_token_style(&self, token_type: &TokenType, config: &Config) -> Style {
-        let color = match token_type {
-            TokenType::Keyword => config.theme.parse_color(&config.theme.colors.keyword),
-            TokenType::String => config.theme.parse_color(&config.theme.colors.string),
-            TokenType::Comment => config.theme.parse_color(&config.theme.colors.comment),
-            TokenType::Number => config.theme.parse_color(&config.theme.colors.number),
-            TokenType::Operator => config.theme.parse_color(&config.theme.colors.operator),
-            TokenType::Identifier => config.theme.parse_color(&config.theme.colors.identifier),
-            TokenType::Type => config.theme.parse_color(&config.theme.colors.type_),
-            TokenType::Function => config.theme.parse_color(&config.theme.colors.function),
-            TokenType::Variable => config.theme.parse_color(&config.theme.colors.variable),
-            TokenType::Property => config.theme.parse_color(&config.theme.colors.property),
-            TokenType::Parameter => config.theme.parse_color(&config.theme.colors.parameter),
-            TokenType::Constant => config.theme.parse_color(&config.theme.colors.constant),
-            TokenType::Namespace => config.theme.parse_color(&config.theme.colors.namespace),
-            TokenType::Punctuation => config.theme.parse_color(&config.theme.colors.punctuation),
-            TokenType::Tag => config.theme.parse_color(&config.theme.colors.tag),
-            TokenType::Attribute => config.theme.parse_color(&config.theme.colors.attribute),
-            TokenType::Normal => config.theme.parse_color(&config.theme.colors.normal),
+        let (color, text_styles) = match token_type {
+            TokenType::Keyword => (config.theme.parse_color(&config.theme.colors.keyword), &config.theme.styles.keyword),
+            TokenType::String => (config.theme.parse_color(&config.theme.colors.string), &config.theme.styles.string),
+            TokenType::Comment => (config.theme.parse_color(&config.theme.colors.comment), &config.theme.styles.comment),
+            TokenType::Number => (config.theme.parse_color(&config.theme.colors.number), &config.theme.styles.number),
+            TokenType::Operator => (config.theme.parse_color(&config.theme.colors.operator), &config.theme.styles.operator),
+            TokenType::Identifier => (config.theme.parse_color(&config.theme.colors.identifier), &config.theme.styles.identifier),
+            TokenType::Type => (config.theme.parse_color(&config.theme.colors.type_), &config.theme.styles.type_),
+            TokenType::Function => (config.theme.parse_color(&config.theme.colors.function), &config.theme.styles.function),
+            TokenType::Variable => (config.theme.parse_color(&config.theme.colors.variable), &config.theme.styles.variable),
+            TokenType::Property => (config.theme.parse_color(&config.theme.colors.property), &config.theme.styles.property),
+            TokenType::Parameter => (config.theme.parse_color(&config.theme.colors.parameter), &config.theme.styles.parameter),
+            TokenType::Constant => (config.theme.parse_color(&config.theme.colors.constant), &config.theme.styles.constant),
+            TokenType::Namespace => (config.theme.parse_color(&config.theme.colors.namespace), &config.theme.styles.namespace),
+            TokenType::Punctuation => (config.theme.parse_color(&config.theme.colors.punctuation), &config.theme.styles.punctuation),
+            TokenType::Tag => (config.theme.parse_color(&config.theme.colors.tag), &config.theme.styles.tag),
+            TokenType::Attribute => (config.theme.parse_color(&config.theme.colors.attribute), &config.theme.styles.attribute),
+            TokenType::Normal => (config.theme.parse_color(&config.theme.colors.normal), &config.theme.styles.normal),
         };
 
-        // Add modifiers based on token type
-        let style = Style::default().fg(color);
-        
-        match token_type {
-            TokenType::Keyword | TokenType::Constant => style.add_modifier(Modifier::BOLD),
-            TokenType::Comment => style.add_modifier(Modifier::ITALIC),
-            TokenType::Tag => style.add_modifier(Modifier::BOLD),
-            _ => style,
-        }
+        // Apply color and text styles from theme
+        let modifiers = config.theme.parse_text_styles(text_styles);
+        Style::default().fg(color).add_modifier(modifiers)
     }
 
     fn draw_status_line(&self, f: &mut ratatui::Frame, area: Rect, editor: &Editor, config: &Config) {
@@ -638,6 +671,16 @@ impl Ui {
             Line::from("  Tab            Insert 4 spaces"),
             Line::from("  Backspace      Delete character backward"),
             Line::from("  Delete         Delete character forward"),
+            Line::from("  Ctrl+A         Select all text"),
+            Line::from("  Ctrl+C         Copy selected text"),
+            Line::from("  Ctrl+X         Cut selected text"),
+            Line::from("  Ctrl+V         Paste from clipboard"),
+            Line::from(""),
+            Line::from("🖱️  MOUSE & SELECTION"),
+            Line::from("  Click          Move cursor"),
+            Line::from("  Click+Drag     Select text"),
+            Line::from("  Shift+Click    Extend selection"),
+            Line::from("  Shift+Arrows   Extend selection with keyboard"),
             Line::from(""),
             Line::from("🎨 CUSTOMIZATION"),
             Line::from("  F1             Show this help"),
@@ -650,7 +693,7 @@ impl Ui {
             Line::from("💡 FEATURES"),
             Line::from("  • Syntax highlighting for 35+ languages"),
             Line::from("  • Word wrapping with smart cursor movement"),
-            Line::from("  • Auto-save after 2 seconds of inactivity"),
+            Line::from("  • Manual save only (Ctrl+S) - no auto-save"),
             Line::from("  • Configurable margins (0 to any size)"),
             Line::from("  • Multiple color themes"),
             Line::from(""),
@@ -669,6 +712,297 @@ impl Ui {
             .alignment(Alignment::Left);
 
         f.render_widget(help_paragraph, modal_area);
+    }
+    
+    /// Apply selection highlighting to text style
+    fn get_text_style_with_selection(
+        &self,
+        line_idx: usize,
+        start_col: usize,
+        end_col: usize,
+        base_color: &str,
+        selection_range: Option<(Position, Position)>,
+        config: &Config,
+    ) -> Style {
+        let base_style = Style::default().fg(config.theme.parse_color(base_color));
+        
+        if let Some((sel_start, sel_end)) = selection_range {
+            // Check if this text range overlaps with selection
+            if self.text_overlaps_with_selection(line_idx, start_col, end_col, sel_start, sel_end) {
+                let selection_bg = config.theme.parse_color(&config.theme.colors.selection_bg);
+                let selection_fg = config.theme.parse_color(&config.theme.colors.selection_fg);
+                return Style::default().bg(selection_bg).fg(selection_fg);
+            }
+        }
+        
+        base_style
+    }
+    
+    /// Apply selection highlighting to an existing style
+    fn apply_selection_style(
+        &self,
+        base_style: Style,
+        line_idx: usize,
+        start_col: usize,
+        end_col: usize,
+        selection_range: Option<(Position, Position)>,
+        config: &Config,
+    ) -> Style {
+        if let Some((sel_start, sel_end)) = selection_range {
+            // Check if this text range overlaps with selection
+            if self.text_overlaps_with_selection(line_idx, start_col, end_col, sel_start, sel_end) {
+                let selection_bg = config.theme.parse_color(&config.theme.colors.selection_bg);
+                let selection_fg = config.theme.parse_color(&config.theme.colors.selection_fg);
+                return Style::default().bg(selection_bg).fg(selection_fg);
+            }
+        }
+        
+        base_style
+    }
+    
+    /// Apply highlighting with character-precise selection boundaries
+    fn apply_highlighting_with_precise_selection(
+        &self,
+        text: String,
+        buffer: &Buffer,
+        line_idx: usize,
+        segment_start: usize,
+        sel_start: Position,
+        sel_end: Position,
+        config: &Config,
+    ) -> Line<'static> {
+        let text_chars: Vec<char> = text.chars().collect();
+        let text_len = text_chars.len();
+        let segment_end = segment_start + text_len;
+        
+        let mut spans = Vec::new();
+        
+        // Calculate selection boundaries within this segment
+        let selection_boundaries = self.calculate_selection_boundaries(
+            line_idx, segment_start, segment_end, sel_start, sel_end
+        );
+        
+        // Get syntax tokens for this line
+        let tokens = buffer.syntax_highlighter.get_line_tokens(line_idx)
+            .map(|tokens| {
+                let mut sorted = tokens.clone();
+                sorted.sort_by_key(|token| token.start);
+                sorted
+            })
+            .unwrap_or_default();
+        
+        // Create a list of all boundaries (selection + token boundaries)
+        let mut all_boundaries = Vec::new();
+        
+        // Add selection boundaries
+        for boundary in selection_boundaries {
+            if boundary >= segment_start && boundary <= segment_end {
+                all_boundaries.push(boundary - segment_start);
+            }
+        }
+        
+        // Add token boundaries
+        for token in &tokens {
+            if token.start >= segment_start && token.start <= segment_end {
+                all_boundaries.push(token.start - segment_start);
+            }
+            if token.end >= segment_start && token.end <= segment_end {
+                all_boundaries.push(token.end - segment_start);
+            }
+        }
+        
+        // Add start and end
+        all_boundaries.push(0);
+        all_boundaries.push(text_len);
+        
+        // Remove duplicates and sort
+        all_boundaries.sort();
+        all_boundaries.dedup();
+        
+        // Process each segment between boundaries
+        for i in 0..all_boundaries.len() - 1 {
+            let start = all_boundaries[i];
+            let end = all_boundaries[i + 1];
+            
+            if start >= end || start >= text_len {
+                continue;
+            }
+            
+            let actual_end = end.min(text_len);
+            if start < actual_end && start < text_chars.len() && actual_end <= text_chars.len() {
+                let segment_text: String = text_chars[start..actual_end].iter().collect();
+                
+                // Determine if this segment is selected
+                let is_selected = self.is_segment_selected(
+                    line_idx, segment_start + start, segment_start + actual_end,
+                    sel_start, sel_end
+                );
+                
+                // Find the appropriate token style for this segment
+                let style = self.get_segment_style(
+                    &tokens, segment_start + start, segment_start + actual_end,
+                    is_selected, config
+                );
+                
+                spans.push(Span::styled(segment_text, style));
+            }
+        }
+        
+        if spans.is_empty() {
+            let is_selected = self.is_segment_selected(
+                line_idx, segment_start, segment_end, sel_start, sel_end
+            );
+            let style = if is_selected {
+                let selection_bg = config.theme.parse_color(&config.theme.colors.selection_bg);
+                let selection_fg = config.theme.parse_color(&config.theme.colors.selection_fg);
+                Style::default().bg(selection_bg).fg(selection_fg)
+            } else {
+                let normal_color = config.theme.parse_color(&config.theme.colors.normal);
+                Style::default().fg(normal_color)
+            };
+            Line::styled(text, style)
+        } else {
+            Line::from(spans)
+        }
+    }
+    
+    /// Calculate selection boundaries within the given range
+    fn calculate_selection_boundaries(
+        &self,
+        line_idx: usize,
+        segment_start: usize,
+        segment_end: usize,
+        sel_start: Position,
+        sel_end: Position,
+    ) -> Vec<usize> {
+        let mut boundaries = Vec::new();
+        
+        // Single line selection
+        if sel_start.line == sel_end.line && sel_start.line == line_idx {
+            if sel_start.column >= segment_start && sel_start.column <= segment_end {
+                boundaries.push(sel_start.column);
+            }
+            if sel_end.column >= segment_start && sel_end.column <= segment_end {
+                boundaries.push(sel_end.column);
+            }
+        }
+        // Multi-line selection
+        else {
+            if line_idx == sel_start.line && sel_start.column >= segment_start && sel_start.column <= segment_end {
+                boundaries.push(sel_start.column);
+            }
+            if line_idx == sel_end.line && sel_end.column >= segment_start && sel_end.column <= segment_end {
+                boundaries.push(sel_end.column);
+            }
+        }
+        
+        boundaries
+    }
+    
+    /// Check if a specific segment is within the selection
+    fn is_segment_selected(
+        &self,
+        line_idx: usize,
+        start_col: usize,
+        end_col: usize,
+        sel_start: Position,
+        sel_end: Position,
+    ) -> bool {
+        // Check if line is within selection range
+        if line_idx < sel_start.line || line_idx > sel_end.line {
+            return false;
+        }
+        
+        // Single line selection
+        if sel_start.line == sel_end.line {
+            if line_idx == sel_start.line {
+                // Segment must be entirely within selection bounds
+                return start_col >= sel_start.column && end_col <= sel_end.column;
+            }
+            return false;
+        }
+        
+        // Multi-line selection
+        if line_idx == sel_start.line {
+            // First line: segment must start at or after selection start
+            return start_col >= sel_start.column;
+        } else if line_idx == sel_end.line {
+            // Last line: segment must end at or before selection end
+            return end_col <= sel_end.column;
+        } else {
+            // Middle lines: entire segment is selected
+            return true;
+        }
+    }
+    
+    /// Get the appropriate style for a text segment
+    fn get_segment_style(
+        &self,
+        tokens: &[crate::syntax::SyntaxToken],
+        start_col: usize,
+        end_col: usize,
+        is_selected: bool,
+        config: &Config,
+    ) -> Style {
+        // Find the token that contains this segment
+        let token_style = tokens.iter()
+            .find(|token| token.start <= start_col && token.end >= end_col)
+            .map(|token| self.get_token_style(&token.token_type, config))
+            .unwrap_or_else(|| {
+                let normal_color = config.theme.parse_color(&config.theme.colors.normal);
+                Style::default().fg(normal_color)
+            });
+        
+        if is_selected {
+            let selection_bg = config.theme.parse_color(&config.theme.colors.selection_bg);
+            let selection_fg = config.theme.parse_color(&config.theme.colors.selection_fg);
+            Style::default().bg(selection_bg).fg(selection_fg)
+        } else {
+            token_style
+        }
+    }
+    
+    /// Check if a text range overlaps with the selection
+    fn text_overlaps_with_selection(
+        &self,
+        line_idx: usize,
+        start_col: usize,
+        end_col: usize,
+        sel_start: Position,
+        sel_end: Position,
+    ) -> bool {
+        // Check if the text line is within the selection range
+        if line_idx < sel_start.line || line_idx > sel_end.line {
+            return false;
+        }
+        
+        // If the selection is on a single line
+        if sel_start.line == sel_end.line {
+            if line_idx == sel_start.line {
+                // Check if the text range overlaps with the selection range on this line
+                // Use max and min to find the actual overlap
+                let text_start = start_col;
+                let text_end = end_col;
+                let sel_start_col = sel_start.column;
+                let sel_end_col = sel_end.column;
+                
+                // There is overlap if: text_start < sel_end AND text_end > sel_start
+                return text_start < sel_end_col && text_end > sel_start_col;
+            }
+            return false;
+        }
+        
+        // Multi-line selection
+        if line_idx == sel_start.line {
+            // First line of selection - only the part after sel_start.column is selected
+            return end_col > sel_start.column;
+        } else if line_idx == sel_end.line {
+            // Last line of selection - only the part before sel_end.column is selected
+            return start_col < sel_end.column;
+        } else {
+            // Middle lines of selection - entire line is selected
+            return true;
+        }
     }
 }
 

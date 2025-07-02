@@ -10,6 +10,13 @@ pub struct Cursor {
     pub line: usize,
     pub column: usize,
     pub preferred_visual_column: usize, // Position within the visual line segment
+    pub selection_start: Option<Position>, // Start of text selection
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    pub line: usize,
+    pub column: usize,
 }
 
 impl Cursor {
@@ -18,6 +25,7 @@ impl Cursor {
             line: 0, 
             column: 0,
             preferred_visual_column: 0,
+            selection_start: None,
         }
     }
     
@@ -28,6 +36,62 @@ impl Cursor {
 
     pub fn reset_preferred_column(&mut self) {
         self.preferred_visual_column = self.column;
+    }
+    
+    /// Start text selection at current cursor position
+    pub fn start_selection(&mut self) {
+        self.selection_start = Some(Position {
+            line: self.line,
+            column: self.column,
+        });
+    }
+    
+    /// Clear text selection
+    pub fn clear_selection(&mut self) {
+        self.selection_start = None;
+    }
+    
+    /// Check if there is an active selection
+    pub fn has_selection(&self) -> bool {
+        self.selection_start.is_some()
+    }
+    
+    /// Get the selection range (start and end positions)
+    /// Returns (start, end) where start is always before end
+    pub fn get_selection_range(&self) -> Option<(Position, Position)> {
+        if let Some(start) = self.selection_start {
+            let current = Position {
+                line: self.line,
+                column: self.column,
+            };
+            
+            // Ensure start comes before end
+            if start.line < current.line || (start.line == current.line && start.column < current.column) {
+                Some((start, current))
+            } else if start.line > current.line || (start.line == current.line && start.column > current.column) {
+                Some((current, start))
+            } else {
+                // Start and end are the same position - no selection
+                None
+            }
+        } else {
+            None
+        }
+    }
+    
+    /// Move cursor to a specific position and optionally extend selection
+    pub fn move_to_position(&mut self, new_line: usize, new_column: usize, extend_selection: bool) {
+        if extend_selection && self.selection_start.is_none() {
+            // Start new selection from current position
+            self.start_selection();
+        } else if !extend_selection {
+            // Clear selection if not extending
+            self.clear_selection();
+        }
+        
+        self.line = new_line;
+        self.column = new_column;
+        self.preferred_visual_column = new_column;
     }
 }
 

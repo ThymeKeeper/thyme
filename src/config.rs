@@ -3,14 +3,14 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub keybindings: KeyBindings,
     pub margins: Margins,
     pub word_wrap: bool,
-    pub auto_save_delay: Duration,
+    pub auto_save_delay_seconds: u64,
     #[serde(skip)]
     pub theme: Theme,
     #[serde(default)]
@@ -35,7 +35,7 @@ pub struct SerializableKeyEvent {
     pub modifiers: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Margins {
     pub vertical: u16,
     pub horizontal: u16,
@@ -45,6 +45,8 @@ pub struct Margins {
 pub struct Theme {
     pub name: String,
     pub colors: ThemeColors,
+    #[serde(default)]
+    pub styles: ThemeStyles,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +87,53 @@ pub struct ThemeColors {
     pub modal_fg: String,
     pub selection_bg: String,
     pub selection_fg: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeStyles {
+    // Syntax styles (bold, italic, underline, etc.)
+    pub keyword: Vec<String>,
+    pub string: Vec<String>,
+    pub comment: Vec<String>,
+    pub number: Vec<String>,
+    pub operator: Vec<String>,
+    pub identifier: Vec<String>,
+    pub type_: Vec<String>,
+    pub function: Vec<String>,
+    pub variable: Vec<String>,
+    pub property: Vec<String>,
+    pub parameter: Vec<String>,
+    pub constant: Vec<String>,
+    pub namespace: Vec<String>,
+    pub punctuation: Vec<String>,
+    pub tag: Vec<String>,
+    pub attribute: Vec<String>,
+    pub normal: Vec<String>,
+}
+
+impl Default for ThemeStyles {
+    fn default() -> Self {
+        Self {
+            // Default: no text styles (all regular text)
+            keyword: vec![],
+            string: vec![],
+            comment: vec![],
+            number: vec![],
+            operator: vec![],
+            identifier: vec![],
+            type_: vec![],
+            function: vec![],
+            variable: vec![],
+            property: vec![],
+            parameter: vec![],
+            constant: vec![],
+            namespace: vec![],
+            punctuation: vec![],
+            tag: vec![],
+            attribute: vec![],
+            normal: vec![],
+        }
+    }
 }
 
 impl Default for Theme {
@@ -128,7 +177,8 @@ impl Default for Theme {
                 modal_fg: "#cccccc".to_string(),
                 selection_bg: "#007acc".to_string(),
                 selection_fg: "#ffffff".to_string(),
-            }
+            },
+            styles: ThemeStyles::default(),
         }
     }
 }
@@ -175,7 +225,7 @@ impl Default for Config {
                 horizontal: 0,
             },
             word_wrap: false,
-            auto_save_delay: Duration::from_secs(2),
+            auto_save_delay_seconds: 0, // 0 = disabled
             theme: Theme::default(),
             theme_name: None,
         }
@@ -194,10 +244,17 @@ impl Config {
                 Ok(mut config) => {
                     // Load the theme if specified
                     if let Some(theme_name) = config.theme_name.clone() {
-                        if theme_name != "_default" {
-                            if let Err(e) = config.load_theme(&theme_name) {
-                                eprintln!("Failed to load theme '{}': {}", theme_name, e);
-                                config.theme = Theme::default();
+                        if theme_name == "Default Dark" {
+                            config.theme = Theme::default();
+                        } else {
+                            // Try to find theme by display name
+                            match config.load_theme_by_display_name(&theme_name) {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    eprintln!("Failed to load theme '{}': {}", theme_name, e);
+                                    config.theme = Theme::default();
+                                    config.theme_name = Some("Default Dark".to_string());
+                                }
                             }
                         }
                     }
@@ -223,7 +280,11 @@ impl Config {
             std::fs::create_dir_all(parent)?;
         }
         
-        let content = toml::to_string_pretty(self)?;
+        let mut config_clone = self.clone();
+        // Save the display name, not the internal filename
+        config_clone.theme_name = Some(self.theme.name.clone());
+        
+        let content = toml::to_string_pretty(&config_clone)?;
         std::fs::write(config_path, content)?;
         Ok(())
     }
@@ -248,6 +309,31 @@ impl Config {
         } else {
             anyhow::bail!("Theme '{}' not found", theme_name)
         }
+    }
+    
+    pub fn load_theme_by_display_name(&mut self, display_name: &str) -> Result<()> {
+        let themes_dir = Self::themes_dir()?;
+        
+        if themes_dir.exists() {
+            for entry in std::fs::read_dir(themes_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                
+                if path.extension().and_then(|s| s.to_str()) == Some("toml") {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Ok(theme) = toml::from_str::<Theme>(&content) {
+                            if theme.name == display_name {
+                                self.theme = theme;
+                                self.theme_name = Some(display_name.to_string());
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        anyhow::bail!("Theme with display name '{}' not found", display_name)
     }
 
     pub fn theme_path(theme_name: &str) -> Result<PathBuf> {
@@ -305,6 +391,28 @@ impl Theme {
             "white" => Color::White,
             _ => Color::White, // Default fallback
         }
+    }
+    
+    pub fn parse_text_styles(&self, styles: &[String]) -> ratatui::style::Modifier {
+        use ratatui::style::Modifier;
+        
+        let mut modifiers = Modifier::empty();
+        
+        for style in styles {
+            match style.to_lowercase().as_str() {
+                "bold" => modifiers |= Modifier::BOLD,
+                "italic" => modifiers |= Modifier::ITALIC,
+                "underlined" | "underline" => modifiers |= Modifier::UNDERLINED,
+                "crossed_out" | "strikethrough" => modifiers |= Modifier::CROSSED_OUT,
+                "dim" => modifiers |= Modifier::DIM,
+                "reversed" | "reverse" => modifiers |= Modifier::REVERSED,
+                "rapid_blink" => modifiers |= Modifier::RAPID_BLINK,
+                "slow_blink" => modifiers |= Modifier::SLOW_BLINK,
+                _ => {} // Ignore unknown styles
+            }
+        }
+        
+        modifiers
     }
 }
 

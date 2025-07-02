@@ -8,7 +8,7 @@ use crate::{
     buffer::Buffer,
 };
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind, MouseButton};
 use ratatui::{backend::Backend, Terminal};
 use std::{path::PathBuf, time::Instant};
 
@@ -21,6 +21,7 @@ pub struct App {
     pub last_save_check: Instant,
     pub last_terminal_size: (u16, u16),
     pub saved_theme: Option<Theme>, // For theme preview
+    pub mouse_dragging: bool, // Track mouse drag state
 }
 
 impl App {
@@ -41,6 +42,7 @@ impl App {
             last_save_check: Instant::now(),
             last_terminal_size,
             saved_theme: None,
+            mouse_dragging: false,
         })
     }
 
@@ -77,6 +79,7 @@ impl App {
     async fn handle_event(&mut self, event: Event) -> Result<()> {
         match event {
             Event::Key(key) => self.handle_key_event(key).await?,
+            Event::Mouse(mouse) => self.handle_mouse_event(mouse).await?,
             Event::Tick => {
                 // Update syntax highlighting if needed
                 if let Some(buffer) = self.editor.current_buffer_mut() {
@@ -122,11 +125,47 @@ impl App {
             KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 // TODO: Implement file open dialog
             }
-            // Language and theme selection mode triggers are handled in custom keybindings
-            KeyCode::Left => self.editor.move_cursor_left(content_width),
-            KeyCode::Right => self.editor.move_cursor_right(content_width),
-            KeyCode::Up => self.editor.move_cursor_up(self.config.word_wrap, content_width),
-            KeyCode::Down => self.editor.move_cursor_down(self.config.word_wrap, content_width),
+            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.editor.select_all();
+            }
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if let Err(e) = self.editor.copy_selection() {
+                    eprintln!("Failed to copy: {}", e);
+                }
+            }
+            KeyCode::Char('x') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if let Err(e) = self.editor.cut_selection() {
+                    eprintln!("Failed to cut: {}", e);
+                }
+            }
+            KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if let Err(e) = self.editor.paste_from_clipboard() {
+                    eprintln!("Failed to paste: {}", e);
+                }
+            }
+            KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.editor.undo();
+            }
+            KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.editor.redo();
+            }
+            // Arrow keys with optional Shift for selection
+            KeyCode::Left => {
+                let extend_selection = key.modifiers.contains(KeyModifiers::SHIFT);
+                self.handle_cursor_movement_left(extend_selection, content_width);
+            }
+            KeyCode::Right => {
+                let extend_selection = key.modifiers.contains(KeyModifiers::SHIFT);
+                self.handle_cursor_movement_right(extend_selection, content_width);
+            }
+            KeyCode::Up => {
+                let extend_selection = key.modifiers.contains(KeyModifiers::SHIFT);
+                self.handle_cursor_movement_up(extend_selection, content_width);
+            }
+            KeyCode::Down => {
+                let extend_selection = key.modifiers.contains(KeyModifiers::SHIFT);
+                self.handle_cursor_movement_down(extend_selection, content_width);
+            }
             KeyCode::Home => self.editor.move_cursor_home(),
             KeyCode::End => self.editor.move_cursor_end(),
             KeyCode::PageUp => self.editor.move_cursor_page_up(),
@@ -202,7 +241,7 @@ impl App {
                     if theme_filename == "_default" {
                         // Reset to default theme
                         self.config.theme = Theme::default();
-                        self.config.theme_name = Some("_default".to_string());
+                        self.config.theme_name = Some("Default Dark".to_string());
                     } else {
                         // Load the selected theme
                         if let Err(e) = self.config.load_theme(theme_filename) {
@@ -229,32 +268,38 @@ impl App {
                 // Allow quit even in theme selection mode
                 self.running = false;
             }
-            // Quick theme selection with number keys
+            // Quick theme selection with number keys (for visible items)
             KeyCode::Char(c) if c.is_ascii_digit() => {
                 let digit = c.to_digit(10).unwrap() as usize;
-                if digit > 0 && digit <= self.editor.available_themes.len() && !self.editor.available_themes.is_empty() {
-                    let index = digit - 1;
-                    if index < self.editor.available_themes.len() {
-                        self.editor.theme_selection_index = index;
+                let scroll_offset = self.editor.theme_selection_scroll_offset;
+                let max_visible_items = 15;
+                let visible_end = (scroll_offset + max_visible_items).min(self.editor.available_themes.len());
+                let visible_count = visible_end - scroll_offset;
+                
+                if digit > 0 && digit <= visible_count && !self.editor.available_themes.is_empty() {
+                    let visible_index = digit - 1;
+                    let actual_index = scroll_offset + visible_index;
+                    if actual_index < self.editor.available_themes.len() {
+                        self.editor.theme_selection_index = actual_index;
                         self.preview_selected_theme();
                     
-                    if let Some(theme_filename) = self.editor.get_selected_theme() {
-                        if theme_filename == "_default" {
-                            self.config.theme = Theme::default();
-                            self.config.theme_name = Some("_default".to_string());
-                        } else {
-                            if let Err(e) = self.config.load_theme(theme_filename) {
-                                eprintln!("Failed to load theme: {}", e);
+                        if let Some(theme_filename) = self.editor.get_selected_theme() {
+                            if theme_filename == "_default" {
+                                self.config.theme = Theme::default();
+                                self.config.theme_name = Some("Default Dark".to_string());
+                            } else {
+                                if let Err(e) = self.config.load_theme(theme_filename) {
+                                    eprintln!("Failed to load theme: {}", e);
+                                }
+                            }
+                            self.editor.exit_theme_selection_mode();
+                            self.saved_theme = None; // Clear saved theme
+                            
+                            // Save config with new theme
+                            if let Err(e) = self.config.save() {
+                                eprintln!("Failed to save config: {}", e);
                             }
                         }
-                        self.editor.exit_theme_selection_mode();
-                        self.saved_theme = None; // Clear saved theme
-                        
-                        // Save config with new theme
-                        if let Err(e) = self.config.save() {
-                            eprintln!("Failed to save config: {}", e);
-                        }
-                    }
                     }
                 }
             }
@@ -397,5 +442,82 @@ impl App {
         if let Some(buffer) = self.editor.current_buffer_mut() {
             buffer.reset_preferred_column();
         }
+    }
+    
+    async fn handle_mouse_event(&mut self, mouse: MouseEvent) -> Result<()> {
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Left click - move cursor or extend selection
+                let extend_selection = mouse.modifiers.contains(KeyModifiers::SHIFT);
+                
+                if extend_selection {
+                    // Shift+click - extend selection to mouse position
+                    self.editor.handle_shift_click(mouse.column, mouse.row, &self.config);
+                } else {
+                    // Regular click - move cursor and clear selection
+                    self.editor.handle_regular_click(mouse.column, mouse.row, &self.config);
+                    // Prepare for potential drag selection
+                    self.mouse_dragging = true;
+                }
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                // Mouse drag - create/extend selection
+                if self.mouse_dragging {
+                    self.editor.handle_mouse_drag(mouse.column, mouse.row, &self.config);
+                }
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                // Mouse button up - stop dragging
+                self.mouse_dragging = false;
+            }
+            _ => {
+                // Ignore other mouse events
+            }
+        }
+        Ok(())
+    }
+    
+    fn handle_cursor_movement_left(&mut self, extend_selection: bool, content_width: usize) {
+        if let Some(buffer) = self.editor.current_buffer_mut() {
+            if extend_selection && !buffer.cursor.has_selection() {
+                buffer.cursor.start_selection();
+            } else if !extend_selection {
+                buffer.cursor.clear_selection();
+            }
+        }
+        self.editor.move_cursor_left(content_width);
+    }
+    
+    fn handle_cursor_movement_right(&mut self, extend_selection: bool, content_width: usize) {
+        if let Some(buffer) = self.editor.current_buffer_mut() {
+            if extend_selection && !buffer.cursor.has_selection() {
+                buffer.cursor.start_selection();
+            } else if !extend_selection {
+                buffer.cursor.clear_selection();
+            }
+        }
+        self.editor.move_cursor_right(content_width);
+    }
+    
+    fn handle_cursor_movement_up(&mut self, extend_selection: bool, content_width: usize) {
+        if let Some(buffer) = self.editor.current_buffer_mut() {
+            if extend_selection && !buffer.cursor.has_selection() {
+                buffer.cursor.start_selection();
+            } else if !extend_selection {
+                buffer.cursor.clear_selection();
+            }
+        }
+        self.editor.move_cursor_up(self.config.word_wrap, content_width);
+    }
+    
+    fn handle_cursor_movement_down(&mut self, extend_selection: bool, content_width: usize) {
+        if let Some(buffer) = self.editor.current_buffer_mut() {
+            if extend_selection && !buffer.cursor.has_selection() {
+                buffer.cursor.start_selection();
+            } else if !extend_selection {
+                buffer.cursor.clear_selection();
+            }
+        }
+        self.editor.move_cursor_down(self.config.word_wrap, content_width);
     }
 }

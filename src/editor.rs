@@ -19,9 +19,13 @@ pub struct Editor {
     // Theme selection mode
     pub theme_selection_mode: bool,
     pub theme_selection_index: usize,
+    pub theme_selection_scroll_offset: usize,
     pub available_themes: Vec<(String, String)>, // (filename, display_name)
     // Help mode
     pub help_mode: bool,
+    // Filename prompt mode
+    pub filename_prompt_mode: bool,
+    pub filename_prompt_text: String,
 }
 
 impl Editor {
@@ -35,8 +39,11 @@ impl Editor {
             language_selection_scroll_offset: 0,
             theme_selection_mode: false,
             theme_selection_index: 0,
+            theme_selection_scroll_offset: 0,
             available_themes: Vec::new(),
             help_mode: false,
+            filename_prompt_mode: false,
+            filename_prompt_text: String::new(),
         }
     }
 
@@ -157,6 +164,7 @@ impl Editor {
     pub fn enter_theme_selection_mode(&mut self, current_theme_name: &str) -> Result<()> {
         self.theme_selection_mode = true;
         self.theme_selection_index = 0;
+        self.theme_selection_scroll_offset = 0;
         
         // Load available themes
         let themes_dir = Config::themes_dir()?;
@@ -193,6 +201,7 @@ impl Editor {
         // Find current theme index
         if let Some(pos) = self.available_themes.iter().position(|(_, name)| name == current_theme_name) {
             self.theme_selection_index = pos;
+            self.update_theme_scroll();
         }
         
         Ok(())
@@ -210,6 +219,7 @@ impl Editor {
             } else {
                 self.theme_selection_index = self.available_themes.len() - 1;
             }
+            self.update_theme_scroll();
         }
     }
 
@@ -220,6 +230,20 @@ impl Editor {
             } else {
                 self.theme_selection_index = 0;
             }
+            self.update_theme_scroll();
+        }
+    }
+
+    fn update_theme_scroll(&mut self) {
+        let max_visible_items = 15; // Same as in UI
+        
+        // If selected item is before the current scroll offset, scroll up
+        if self.theme_selection_index < self.theme_selection_scroll_offset {
+            self.theme_selection_scroll_offset = self.theme_selection_index;
+        }
+        // If selected item is beyond the visible area, scroll down
+        else if self.theme_selection_index >= self.theme_selection_scroll_offset + max_visible_items {
+            self.theme_selection_scroll_offset = self.theme_selection_index - max_visible_items + 1;
         }
     }
 
@@ -727,6 +751,287 @@ impl Editor {
 
     pub fn exit_help_mode(&mut self) {
         self.help_mode = false;
+    }
+
+    // Filename prompt methods
+    pub fn enter_filename_prompt_mode(&mut self) {
+        self.filename_prompt_mode = true;
+        self.filename_prompt_text.clear();
+    }
+
+    pub fn exit_filename_prompt_mode(&mut self) {
+        self.filename_prompt_mode = false;
+        self.filename_prompt_text.clear();
+    }
+
+    pub fn add_char_to_filename_prompt(&mut self, c: char) {
+        self.filename_prompt_text.push(c);
+    }
+
+    pub fn backspace_filename_prompt(&mut self) {
+        self.filename_prompt_text.pop();
+    }
+
+    pub async fn save_with_filename(&mut self) -> Result<()> {
+        if self.filename_prompt_text.is_empty() {
+            return Err(anyhow::anyhow!("No filename provided"));
+        }
+        
+        let path = PathBuf::from(&self.filename_prompt_text);
+        
+        if let Some(buffer) = self.current_buffer_mut() {
+            buffer.save(Some(path))?;
+        }
+        
+        self.exit_filename_prompt_mode();
+        Ok(())
+    }
+
+    pub async fn save_current_buffer_with_prompt(&mut self) -> Result<()> {
+        if let Some(buffer) = self.current_buffer() {
+            if buffer.file_path.is_some() {
+                // File has a path, save directly
+                self.save_current_buffer().await
+            } else {
+                // No path, enter filename prompt mode
+                self.enter_filename_prompt_mode();
+                Ok(())
+            }
+        } else {
+            Err(anyhow::anyhow!("No buffer to save"))
+        }
+    }
+
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.buffers.iter().any(|buffer| buffer.dirty)
+    }
+    
+    /// Select all text in the current buffer
+    pub fn select_all(&mut self) {
+        if let Some(buffer) = self.current_buffer_mut() {
+            buffer.select_all();
+        }
+    }
+    
+    /// Copy selected text to clipboard
+    pub fn copy_selection(&self) -> anyhow::Result<()> {
+        if let Some(buffer) = self.current_buffer() {
+            buffer.copy_selection()?;
+        }
+        Ok(())
+    }
+    
+    /// Cut selected text to clipboard
+    pub fn cut_selection(&mut self) -> anyhow::Result<()> {
+        if let Some(buffer) = self.current_buffer_mut() {
+            buffer.cut_selection()?;
+        }
+        Ok(())
+    }
+    
+    /// Paste text from clipboard
+    pub fn paste_from_clipboard(&mut self) -> Result<()> {
+        if let Some(buffer) = self.current_buffer_mut() {
+            buffer.paste_from_clipboard()
+        } else {
+            Ok(())
+        }
+    }
+    
+    /// Undo the last action in the current buffer
+    pub fn undo(&mut self) -> bool {
+        if let Some(buffer) = self.current_buffer_mut() {
+            buffer.undo()
+        } else {
+            false
+        }
+    }
+    
+    /// Redo the last undone action in the current buffer
+    pub fn redo(&mut self) -> bool {
+        if let Some(buffer) = self.current_buffer_mut() {
+            buffer.redo()
+        } else {
+            false
+        }
+    }
+    /// Convert mouse coordinates to buffer position
+    pub fn mouse_to_buffer_position(&self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config) -> Option<(usize, usize)> {
+        // Calculate the editor area (accounting for margins)
+        let editor_x = config.margins.horizontal;
+        let editor_y = config.margins.vertical;
+        
+        // Check if mouse is within editor area
+        if mouse_x < editor_x || mouse_y < editor_y {
+            return None;
+        }
+        
+        let relative_x = (mouse_x - editor_x) as usize;
+        let relative_y = (mouse_y - editor_y) as usize;
+        
+        if let Some(buffer) = self.current_buffer() {
+            let content_width = self.calculate_content_width(config);
+            
+            if config.word_wrap {
+                // Handle word-wrapped position conversion
+                self.mouse_to_wrapped_position_complex(relative_x, relative_y, content_width)
+            } else {
+                // Simple case: no word wrap
+                let line = self.viewport_line + relative_y;
+                
+                // Ensure line is within buffer bounds
+                if line >= buffer.rope.len_lines() {
+                    return None;
+                }
+                
+                let line_text = buffer.get_line_text(line);
+                let line_content_len = if line_text.ends_with('\n') {
+                    line_text.chars().count().saturating_sub(1)
+                } else {
+                    line_text.chars().count()
+                };
+                let column = relative_x.min(line_content_len);
+                Some((line, column))
+            }
+        } else {
+            None
+        }
+    }
+    
+    fn mouse_to_wrapped_position(&self, line: usize, visual_x: usize, content_width: usize) -> Option<(usize, usize)> {
+        if let Some(buffer) = self.current_buffer() {
+            let line_text = buffer.get_line_text(line);
+            let line_text_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            let wrapped_segments = crate::text_utils::wrap_line(line_text_for_display, content_width);
+            
+            // Find which visual line the mouse X coordinate corresponds to
+            let mut cursor_column = 0;
+
+            for segment in &wrapped_segments {
+                let segment_length = segment.0.chars().count();
+                if visual_x < segment_length {
+                    cursor_column += visual_x;
+                    break;
+                } else {
+                    cursor_column += segment_length;
+                }
+            }
+
+            Some((line, cursor_column))
+        } else {
+            None
+        }
+    }
+    fn mouse_to_wrapped_position_complex(&self, relative_x: usize, relative_y: usize, content_width: usize) -> Option<(usize, usize)> {
+        if let Some(buffer) = self.current_buffer() {
+            // We need to traverse all lines from viewport_line to find which logical line
+            // and column corresponds to the visual position (relative_x, relative_y)
+            let mut current_visual_line = 0;
+            
+            for logical_line in self.viewport_line.. {
+                if logical_line >= buffer.rope.len_lines() {
+                    break;
+                }
+                
+                let line_text = buffer.get_line_text(logical_line);
+                let line_text_for_display = if line_text.ends_with('\n') {
+                    &line_text[..line_text.len()-1]
+                } else {
+                    &line_text
+                };
+                
+                let wrapped_segments = crate::text_utils::wrap_line(line_text_for_display, content_width);
+                
+                // Check each wrapped segment of this logical line
+                for (_segment_idx, (segment_text, start_col)) in wrapped_segments.iter().enumerate() {
+                    if current_visual_line == relative_y {
+                        // This is the target visual line!
+                        let segment_length = segment_text.chars().count();
+                        let column_in_segment = relative_x.min(segment_length);
+                        let actual_column = start_col + column_in_segment;
+                        return Some((logical_line, actual_column));
+                    }
+                    current_visual_line += 1;
+                }
+                
+                // If this line has no wrapped segments (empty line), still count it as one visual line
+                if wrapped_segments.is_empty() {
+                    if current_visual_line == relative_y {
+                        return Some((logical_line, 0));
+                    }
+                    current_visual_line += 1;
+                }
+            }
+            
+            // If we get here, the click was beyond the available content
+            None
+        } else {
+            None
+        }
+    }
+    
+    fn calculate_content_width(&self, config: &crate::config::Config) -> usize {
+        let terminal_width = crossterm::terminal::size()
+            .map(|(w, _)| w as usize)
+            .unwrap_or(80);
+        
+        terminal_width
+            .saturating_sub((config.margins.horizontal * 2) as usize)
+            .max(10)
+    }
+    
+    /// Handle regular mouse click - move cursor and clear selection
+    pub fn handle_regular_click(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config) {
+        if let Some((line, column)) = self.mouse_to_buffer_position(mouse_x, mouse_y, config) {
+            if let Some(buffer) = self.current_buffer_mut() {
+                // Clear any existing selection
+                buffer.cursor.clear_selection();
+                // Move cursor to click position
+                buffer.cursor.line = line;
+                buffer.cursor.column = column;
+                buffer.cursor.preferred_visual_column = column;
+                self.adjust_viewport();
+            }
+        }
+    }
+    
+    /// Handle Shift+click - extend selection to mouse position
+    pub fn handle_shift_click(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config) {
+        if let Some((line, column)) = self.mouse_to_buffer_position(mouse_x, mouse_y, config) {
+            if let Some(buffer) = self.current_buffer_mut() {
+                // If no selection exists, start one from current cursor position
+                if !buffer.cursor.has_selection() {
+                    buffer.cursor.start_selection();
+                }
+                // Move cursor to clicked position (extending selection)
+                buffer.cursor.line = line;
+                buffer.cursor.column = column;
+                buffer.cursor.preferred_visual_column = column;
+                self.adjust_viewport();
+            }
+        }
+    }
+    
+    /// Handle mouse drag - create or extend selection
+    pub fn handle_mouse_drag(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config) {
+        if let Some((line, column)) = self.mouse_to_buffer_position(mouse_x, mouse_y, config) {
+            if let Some(buffer) = self.current_buffer_mut() {
+                // If no selection exists yet, start one from the initial click position
+                if !buffer.cursor.has_selection() {
+                    buffer.cursor.start_selection();
+                }
+                // Move cursor to current drag position (extending selection)
+                buffer.cursor.line = line;
+                buffer.cursor.column = column;
+                buffer.cursor.preferred_visual_column = column;
+                self.adjust_viewport();
+            }
+        }
     }
 }
 
