@@ -408,7 +408,7 @@ impl Buffer {
             // Push paste to undo stack as insert
             self.add_undo_state(UndoAction::InsertText {
                 position: Position { line: start_position.line, column: start_position.column },
-                text,
+                text: text.clone(),
                 cursor_after: Position { line: cursor_after.line, column: cursor_after.column },
             });
 
