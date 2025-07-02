@@ -3,10 +3,11 @@
 mod app;
 mod buffer;
 mod config;
+mod cursor;
 mod editor;
 mod events;
 mod syntax;
-// mod sql_analyzer; // REMOVED - not needed for syntax highlighting
+mod text_utils;
 mod ui;
 
 use anyhow::Result;

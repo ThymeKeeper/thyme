@@ -17,8 +17,9 @@ pub struct Config {
     pub theme_name: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyBindings {
+    pub help: SerializableKeyEvent,
     pub increase_vertical_margin: SerializableKeyEvent,
     pub decrease_vertical_margin: SerializableKeyEvent,
     pub increase_horizontal_margin: SerializableKeyEvent,
@@ -28,7 +29,7 @@ pub struct KeyBindings {
     pub theme_selection: SerializableKeyEvent,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableKeyEvent {
     pub code: String,
     pub modifiers: Vec<String>,
@@ -136,24 +137,28 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             keybindings: KeyBindings {
-                increase_vertical_margin: SerializableKeyEvent {
+                help: SerializableKeyEvent {
                     code: "F1".to_string(),
                     modifiers: vec![],
                 },
-                decrease_vertical_margin: SerializableKeyEvent {
+                increase_vertical_margin: SerializableKeyEvent {
                     code: "F2".to_string(),
                     modifiers: vec![],
                 },
-                increase_horizontal_margin: SerializableKeyEvent {
+                decrease_vertical_margin: SerializableKeyEvent {
                     code: "F3".to_string(),
                     modifiers: vec![],
                 },
-                decrease_horizontal_margin: SerializableKeyEvent {
+                increase_horizontal_margin: SerializableKeyEvent {
                     code: "F4".to_string(),
                     modifiers: vec![],
                 },
-                toggle_word_wrap: SerializableKeyEvent {
+                decrease_horizontal_margin: SerializableKeyEvent {
                     code: "F5".to_string(),
+                    modifiers: vec![],
+                },
+                toggle_word_wrap: SerializableKeyEvent {
+                    code: "F6".to_string(),
                     modifiers: vec![],
                 },
                 language_selection: SerializableKeyEvent {
@@ -166,8 +171,8 @@ impl Default for Config {
                 },
             },
             margins: Margins {
-                vertical: 1,
-                horizontal: 2,
+                vertical: 0,
+                horizontal: 0,
             },
             word_wrap: false,
             auto_save_delay: Duration::from_secs(2),

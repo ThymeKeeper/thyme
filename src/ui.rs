@@ -1,6 +1,12 @@
 // src/ui.rs
 
-use crate::{buffer::Buffer, config::Config, editor::Editor, syntax::TokenType};
+use crate::{
+    buffer::Buffer, 
+    config::Config, 
+    editor::Editor, 
+    syntax::TokenType,
+    text_utils::wrap_line
+};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
@@ -27,15 +33,14 @@ impl Ui {
         let terminal_width = crossterm::terminal::size().map(|(w, _)| w as usize).unwrap_or(80);
         
         terminal_width
-            .saturating_sub(2) // outer layout margins
-            .saturating_sub((config.margins.horizontal * 2) as usize) // editor margins
-            .saturating_sub(2) // editor borders
+            .saturating_sub((config.margins.horizontal * 2) as usize) // editor margins only
+            // No outer layout margin or border subtraction
     }
 
     pub fn draw(&self, f: &mut ratatui::Frame, editor: &Editor, config: &Config) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .margin(1)
+            .margin(0)  // Remove outer margin to allow editor to reach edges
             .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
             .split(f.area());
 
@@ -54,6 +59,11 @@ impl Ui {
         if editor.theme_selection_mode {
             self.draw_theme_selection_modal(f, editor, config);
         }
+        
+        // Draw help modal if active
+        if editor.help_mode {
+            self.draw_help_modal(f, config);
+        }
     }
 
     fn draw_editor(&self, f: &mut ratatui::Frame, area: Rect, editor: &Editor, config: &Config) {
@@ -64,14 +74,14 @@ impl Ui {
             });
 
             let content_width = self.get_content_width(config);
-            let content_height = editor_area.height.saturating_sub(2) as usize; // Account for borders
+            let content_height = editor_area.height as usize; // No borders to account for
 
             // Get wrapped lines and cursor position
             let (wrapped_lines, cursor_visual_pos) = self.prepare_wrapped_content(
                 buffer, editor, config, content_width, content_height
             );
 
-            // Convert to ratatui Lines with tree-sitter syntax highlighting
+            // Convert to ratatui Lines with syntax highlighting
             let lines: Vec<Line> = wrapped_lines.iter().map(|wl| {
                 self.apply_syntax_highlighting_wrapped(
                     wl.content.clone(), 
@@ -82,30 +92,21 @@ impl Ui {
                 )
             }).collect();
 
-            // Simple title based on language
-            let display_name = Buffer::get_language_display_name(&buffer.language);
-            let title = format!("Thyme Editor [{}]", display_name);
-
-            let border_color = config.theme.parse_color(&config.theme.colors.border);
             let bg_color = config.theme.parse_color(&config.theme.colors.background);
             let fg_color = config.theme.parse_color(&config.theme.colors.foreground);
 
             let paragraph = Paragraph::new(lines)
-                .block(Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(border_color))
-                    .title(title))
                 .style(Style::default().bg(bg_color).fg(fg_color));
 
             f.render_widget(paragraph, editor_area);
 
-            // Draw cursor at calculated position
+            // Draw cursor at calculated position (no border offset)
             if let Some((cursor_x, cursor_y)) = cursor_visual_pos {
-                let screen_x = editor_area.x + 1 + cursor_x as u16;
-                let screen_y = editor_area.y + 1 + cursor_y as u16;
+                let screen_x = editor_area.x + cursor_x as u16;
+                let screen_y = editor_area.y + cursor_y as u16;
                 
-                if screen_x < editor_area.x + editor_area.width.saturating_sub(1) && 
-                   screen_y < editor_area.y + editor_area.height.saturating_sub(1) {
+                if screen_x < editor_area.x + editor_area.width && 
+                   screen_y < editor_area.y + editor_area.height {
                     f.set_cursor_position((screen_x, screen_y));
                 }
             }
@@ -119,7 +120,7 @@ impl Ui {
                 Line::from(""),
                 Line::from("Press Ctrl+O to open a file"),
                 Line::from(""),
-                Line::from("Supported languages with Tree-sitter syntax highlighting:"),
+                Line::from("Supported languages with syntax highlighting:"),
                 Line::from("• Rust (.rs)"),
                 Line::from("• Python (.py)"),
                 Line::from("• JavaScript/TypeScript (.js, .jsx, .ts, .tsx)"),
@@ -127,9 +128,14 @@ impl Ui {
                 Line::from("• JSON (.json)"),
                 Line::from("• SQL (.sql, .mysql, .pgsql, .sqlite)"),
                 Line::from("• TOML (.toml)"),
+                Line::from("• HTML (.html, .htm)"),
+                Line::from("• CSS (.css)"),
+                Line::from("• Markdown (.md, .markdown)"),
+                Line::from("• YAML (.yaml, .yml)"),
+                Line::from("• XML (.xml)"),
                 Line::from(""),
                 Line::from("Features:"),
-                Line::from("• Tree-sitter syntax highlighting for 7 languages"),
+                Line::from("• Simple syntax highlighting for 35+ languages"),
                 Line::from("• Customizable color themes"),
                 Line::from("• Word wrapping with proper cursor handling"),
                 Line::from("• Auto-save functionality"),
@@ -158,15 +164,20 @@ impl Ui {
     // Draw language selection modal
     fn draw_language_selection_modal(&self, f: &mut ratatui::Frame, editor: &Editor, config: &Config) {
         if let Some((languages, selected_index)) = editor.get_language_selection_info() {
-            // Calculate modal size and position
+            // Calculate modal size and position with bounds checking
             let modal_width = 50;
-            let modal_height = languages.len() as u16 + 4; // +4 for borders and title
+            let max_visible_items = 15; // Maximum items to show at once
+            let max_modal_height = (languages.len().min(max_visible_items) as u16) + 4; // +4 for borders and title
             
             let area = f.area();
+            // Ensure modal doesn't exceed screen bounds
+            let modal_height = max_modal_height.min(area.height.saturating_sub(2));
+            let content_height = modal_height.saturating_sub(4); // Available space for list items
+            
             let modal_area = Rect {
                 x: (area.width.saturating_sub(modal_width)) / 2,
                 y: (area.height.saturating_sub(modal_height)) / 2,
-                width: modal_width,
+                width: modal_width.min(area.width.saturating_sub(2)),
                 height: modal_height,
             };
 
@@ -179,23 +190,22 @@ impl Ui {
             let selection_fg = config.theme.parse_color(&config.theme.colors.selection_fg);
             let border_color = config.theme.parse_color(&config.theme.colors.border_active);
 
-            // Create language list items with numbering and tree-sitter version info
-            let items: Vec<ListItem> = languages
+            // Calculate visible range based on scroll offset
+            let scroll_offset = editor.language_selection_scroll_offset;
+            let visible_end = (scroll_offset + content_height as usize).min(languages.len());
+            
+            // Create language list items with numbering for visible items only
+            let items: Vec<ListItem> = languages[scroll_offset..visible_end]
                 .iter()
                 .enumerate()
-                .map(|(i, &lang)| {
+                .map(|(visible_i, &lang)| {
+                    let actual_i = scroll_offset + visible_i;
                     let display_name = Buffer::get_language_display_name(lang);
-                    let number = i + 1;
+                    let number = actual_i + 1;
                     
-                    // Add tree-sitter version indication
-                    let ts_version = match lang {
-                        "text" => " (no highlighting)",
-                        _ => " (tree-sitter)",
-                    };
+                    let text = format!("{}. {}", number, display_name);
                     
-                    let text = format!("{}. {}{}", number, display_name, ts_version);
-                    
-                    if i == selected_index {
+                    if actual_i == selected_index {
                         ListItem::new(text).style(
                             Style::default()
                                 .bg(selection_bg)
@@ -208,24 +218,44 @@ impl Ui {
                 })
                 .collect();
 
+            // Create scroll indicator text
+            let has_more_above = scroll_offset > 0;
+            let has_more_below = visible_end < languages.len();
+            let scroll_info = if has_more_above || has_more_below {
+                let mut info = String::new();
+                if has_more_above { info.push_str("▲ "); }
+                info.push_str(&format!("{}-{}/{}", scroll_offset + 1, visible_end, languages.len()));
+                if has_more_below { info.push_str(" ▼"); }
+                format!(" [{}]", info)
+            } else {
+                String::new()
+            };
+            
             // Create the list widget
+            let title = format!("Select Language (↑↓ to navigate, Enter to select, Esc to cancel){}", scroll_info);
             let list = List::new(items)
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
                         .border_style(Style::default().fg(border_color))
-                        .title("Select Language (↑↓ to navigate, Enter to select, Esc to cancel)")
+                        .title(title)
                         .style(Style::default().bg(modal_bg))
                 )
                 .style(Style::default().fg(modal_fg));
 
             f.render_widget(list, modal_area);
 
-            // Add instruction text at the bottom of the modal
+            // Add instruction text at the bottom of the modal (with bounds checking)
+            let instruction_y = if modal_area.height >= 3 {
+                modal_area.y + modal_area.height - 2
+            } else {
+                modal_area.y + modal_area.height.saturating_sub(1)
+            };
+            
             let instruction_area = Rect {
                 x: modal_area.x + 1,
-                y: modal_area.y + modal_area.height - 2,
-                width: modal_area.width - 2,
+                y: instruction_y,
+                width: modal_area.width.saturating_sub(2),
                 height: 1,
             };
 
@@ -247,15 +277,18 @@ impl Ui {
     // Draw theme selection modal
     fn draw_theme_selection_modal(&self, f: &mut ratatui::Frame, editor: &Editor, config: &Config) {
         if let Some((themes, selected_index)) = editor.get_theme_selection_info() {
-            // Calculate modal size and position
+            // Calculate modal size and position with bounds checking
             let modal_width = 60;
-            let modal_height = (themes.len() as u16).min(15) + 4; // +4 for borders and title, max 15 items visible
+            let max_modal_height = (themes.len() as u16).min(15) + 4; // +4 for borders and title, max 15 items visible
             
             let area = f.area();
+            // Ensure modal doesn't exceed screen bounds
+            let modal_height = max_modal_height.min(area.height.saturating_sub(2));
+            
             let modal_area = Rect {
                 x: (area.width.saturating_sub(modal_width)) / 2,
                 y: (area.height.saturating_sub(modal_height)) / 2,
-                width: modal_width,
+                width: modal_width.min(area.width.saturating_sub(2)),
                 height: modal_height,
             };
 
@@ -302,11 +335,17 @@ impl Ui {
 
             f.render_widget(list, modal_area);
 
-            // Add instruction text at the bottom of the modal
+            // Add instruction text at the bottom of the modal (with bounds checking)
+            let instruction_y = if modal_area.height >= 3 {
+                modal_area.y + modal_area.height - 2
+            } else {
+                modal_area.y + modal_area.height.saturating_sub(1)
+            };
+            
             let instruction_area = Rect {
                 x: modal_area.x + 1,
-                y: modal_area.y + modal_area.height - 2,
-                width: modal_area.width - 2,
+                y: instruction_y,
+                width: modal_area.width.saturating_sub(2),
                 height: 1,
             };
 
@@ -396,7 +435,7 @@ impl Ui {
     }
 
     fn wrap_line(&self, text: &str, width: usize) -> Vec<(String, usize)> {
-        wrap_line_simple(text, width)
+        wrap_line(text, width)
     }
 
     fn apply_syntax_highlighting_wrapped(
@@ -526,41 +565,30 @@ impl Ui {
                 .and_then(|n| n.to_str())
                 .unwrap_or("[No Name]");
             
-            status_text.push_str(&format!("{} ", file_name));
+            status_text.push_str(&format!("{}", file_name));
 
             if buffer.dirty {
-                status_text.push_str("[+] ");
+                status_text.push_str(" [+]");
             }
 
             // Cursor position
-            status_text.push_str(&format!("{}:{} ", buffer.cursor.line + 1, buffer.cursor.column + 1));
+            status_text.push_str(&format!(" | {}:{}", buffer.cursor.line + 1, buffer.cursor.column + 1));
 
-            // Language with tree-sitter indicator
+            // Language indicator (simple display name)
             let display_name = Buffer::get_language_display_name(&buffer.language);
-            let ts_indicator = match buffer.language.as_str() {
-                "text" => "TXT",          // No highlighting
-                _ => "TS",                // Tree-sitter supported
-            };
-            status_text.push_str(&format!("[{}|{}] ", display_name, ts_indicator));
+            status_text.push_str(&format!(" | {}", display_name));
+            
+            // Word wrap indicator (only if enabled)
+            if config.word_wrap {
+                status_text.push_str(" | WRAP");
+            }
         }
 
-        // Editor settings
-        if config.word_wrap {
-            status_text.push_str("WRAP ");
-        }
-
-        status_text.push_str(&format!("M:{}x{} ", config.margins.horizontal, config.margins.vertical));
-
-        // Theme name
-        status_text.push_str(&format!("Theme: {} ", config.theme.name));
-
-        // Language selection hint
+        // Mode indicators (only when in special modes)
         if editor.language_selection_mode {
-            status_text.push_str("| LANGUAGE SELECTION MODE");
+            status_text.push_str(" | LANGUAGE SELECTION");
         } else if editor.theme_selection_mode {
-            status_text.push_str("| THEME SELECTION MODE");
-        } else {
-            status_text.push_str("| Ctrl+L: Language | Ctrl+T: Theme");
+            status_text.push_str(" | THEME SELECTION");
         }
 
         let status_bg = config.theme.parse_color(&config.theme.colors.status_bar_bg);
@@ -571,59 +599,76 @@ impl Ui {
 
         f.render_widget(status, area);
     }
+
+    // Draw help modal
+    fn draw_help_modal(&self, f: &mut ratatui::Frame, config: &Config) {
+        let area = f.area();
+        let modal_width = 70;
+        let modal_height = 25;
+        
+        let modal_area = Rect {
+            x: (area.width.saturating_sub(modal_width)) / 2,
+            y: (area.height.saturating_sub(modal_height)) / 2,
+            width: modal_width.min(area.width.saturating_sub(2)),
+            height: modal_height.min(area.height.saturating_sub(2)),
+        };
+
+        // Clear the background
+        f.render_widget(Clear, modal_area);
+
+        let modal_bg = config.theme.parse_color(&config.theme.colors.modal_bg);
+        let modal_fg = config.theme.parse_color(&config.theme.colors.modal_fg);
+        let border_color = config.theme.parse_color(&config.theme.colors.border_active);
+
+        let help_content = vec![
+            Line::from(""),
+            Line::from("📝 EDITOR COMMANDS"),
+            Line::from("  Ctrl+S         Save file"),
+            Line::from("  Ctrl+O         Open file (TODO)"),
+            Line::from("  Ctrl+Q         Quit editor"),
+            Line::from(""),
+            Line::from("🔤 CURSOR MOVEMENT"),
+            Line::from("  Arrow Keys     Move cursor"),
+            Line::from("  Home           Move to beginning of line"),
+            Line::from("  End            Move to end of line"),
+            Line::from("  Page Up/Down   Move by page"),
+            Line::from(""),
+            Line::from("✏️  TEXT EDITING"),
+            Line::from("  Enter          Insert new line"),
+            Line::from("  Tab            Insert 4 spaces"),
+            Line::from("  Backspace      Delete character backward"),
+            Line::from("  Delete         Delete character forward"),
+            Line::from(""),
+            Line::from("🎨 CUSTOMIZATION"),
+            Line::from("  F1             Show this help"),
+            Line::from("  F2/F3          Adjust vertical margins"),
+            Line::from("  F4/F5          Adjust horizontal margins"),
+            Line::from("  F6             Toggle word wrap"),
+            Line::from("  Ctrl+L         Change language/syntax"),
+            Line::from("  Ctrl+T         Change color theme"),
+            Line::from(""),
+            Line::from("💡 FEATURES"),
+            Line::from("  • Syntax highlighting for 35+ languages"),
+            Line::from("  • Word wrapping with smart cursor movement"),
+            Line::from("  • Auto-save after 2 seconds of inactivity"),
+            Line::from("  • Configurable margins (0 to any size)"),
+            Line::from("  • Multiple color themes"),
+            Line::from(""),
+            Line::from(Span::styled("Press ESC, F1, or Q to close this help", Style::default().add_modifier(Modifier::BOLD))),
+        ];
+
+        let help_paragraph = Paragraph::new(help_content)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(border_color))
+                    .title("Thyme Editor - Help")
+                    .style(Style::default().bg(modal_bg))
+            )
+            .style(Style::default().fg(modal_fg))
+            .alignment(Alignment::Left);
+
+        f.render_widget(help_paragraph, modal_area);
+    }
 }
 
-// Standalone function to avoid borrowing issues
-fn wrap_line_simple(text: &str, width: usize) -> Vec<(String, usize)> {
-    if width == 0 {
-        return vec![(text.to_string(), 0)];
-    }
-
-    let mut result = Vec::new();
-    let chars: Vec<char> = text.chars().collect();
-    
-    if chars.is_empty() {
-        return vec![(String::new(), 0)];
-    }
-
-    let mut start_pos = 0;
-    
-    while start_pos < chars.len() {
-        let mut end_pos = (start_pos + width).min(chars.len());
-        
-        // If we're not at the end of the text, try to break at a word boundary
-        if end_pos < chars.len() {
-            // Look backwards from end_pos to find a space
-            let mut break_pos = end_pos;
-            for i in (start_pos..end_pos).rev() {
-                if chars[i] == ' ' {
-                    break_pos = i;
-                    break;
-                }
-            }
-            
-            // If we found a space and it's not too close to the start, use it
-            if break_pos > start_pos && (break_pos - start_pos) > width / 4 {
-                end_pos = break_pos;
-            }
-        }
-        
-        // Extract the segment - DON'T trim trailing spaces to preserve cursor positioning
-        let segment: String = chars[start_pos..end_pos].iter().collect();
-        
-        result.push((segment, start_pos));
-        
-        // Move to the next segment, skipping any spaces at the break point ONLY if we broke at a space
-        if end_pos < chars.len() && chars[end_pos] == ' ' {
-            start_pos = end_pos + 1;
-        } else {
-            start_pos = end_pos;
-        }
-    }
-
-    if result.is_empty() {
-        result.push((String::new(), 0));
-    }
-
-    result
-}

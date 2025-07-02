@@ -1,17 +1,8 @@
 // src/syntax.rs
 //
-// Tree-sitter syntax highlighting with a single tree-sitter version (0.20.10)
-// SQL support is provided by compiling tree-sitter-sql from source
+// Simple syntax highlighting without Tree-sitter dependency
 
-use ropey::Rope;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{self, Write};
-use tree_sitter::{Language, Parser, Query, QueryCursor, Tree};
-
-// External function to get the SQL language (compiled from source)
-#[cfg(feature = "sql")]
-extern "C" { fn tree_sitter_sql() -> Language; }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
@@ -43,9 +34,6 @@ pub struct SyntaxToken {
 
 pub struct SyntaxHighlighter {
     language: String,
-    parser: Parser,
-    tree: Option<Tree>,
-    query: Option<Query>,
     tokens_by_line: HashMap<usize, Vec<SyntaxToken>>,
     needs_update: bool,
 }
@@ -54,479 +42,380 @@ impl SyntaxHighlighter {
     pub fn new() -> Self {
         Self {
             language: "text".to_string(),
-            parser: Parser::new(),
-            tree: None,
-            query: None,
             tokens_by_line: HashMap::new(),
             needs_update: true,
         }
     }
 
     pub fn set_language(&mut self, language: &str) {
-        if self.language == language {
-            return;
-        }
-
-        match File::create("/tmp/thyme_debug.log") {
-            Ok(mut file) => {
-                writeln!(file, "[DEBUG] Setting language from '{}' to '{}'\n",
-                    self.language, language).expect("Failed to write to debug log");
-            }
-            Err(e) => {
-                eprintln!("[ERROR] Failed to create debug log: {}", e);
-            }
-        }
-
-        self.language = language.to_string();
-        self.tokens_by_line.clear();
-        self.tree = None;
-        
-        let ts_language = match language {
-            "rust" => Some(tree_sitter_rust::language()),
-            "python" => Some(tree_sitter_python::language()),
-            "javascript" | "typescript" => Some(tree_sitter_javascript::language()),
-            "bash" => Some(tree_sitter_bash::language()),
-            "json" => Some(tree_sitter_json::language()),
-            "toml" => Some(tree_sitter_toml::language()),
-            "sql" => {
-                #[cfg(feature = "sql")]
-                {
-                    Some(unsafe { tree_sitter_sql() })
-                }
-                #[cfg(not(feature = "sql"))]
-                {
-                    None
-                }
-            }
-            _ => None,
-        };
-
-        if let Some(lang) = ts_language {
-            self.parser = Parser::new();
-            if let Err(_) = self.parser.set_language(lang) {
-                self.query = None;
-                self.tree = None;
-                return;
-            }
-            
-            match Self::create_highlight_query(language, lang) {
-                Some(query) => {
-                    self.query = Some(query);
-                },
-                None => {
-                    self.query = None;
-                }
-            }
-            self.tree = None;
+        if self.language != language {
+            self.language = language.to_string();
+            self.tokens_by_line.clear();
             self.needs_update = true;
-        } else {
-            // Fallback to no highlighting for unsupported languages
-            self.parser = Parser::new();
-            self.query = None;
-            self.tree = None;
         }
     }
 
-    fn create_highlight_query(language: &str, ts_language: Language) -> Option<Query> {
-        let query_string = match language {
-            "rust" => r#"
-                (line_comment) @comment
-                (block_comment) @comment
-                
-                (string_literal) @string
-                (raw_string_literal) @string
-                (char_literal) @string
-                
-                (integer_literal) @number
-                (float_literal) @number
-                
-                (boolean_literal) @constant
-                
-                [
-                    "fn" "let" "mut" "const" "static" "if" "else" "while" "for"
-                    "loop" "match" "struct" "enum" "trait" "impl" "use" "mod"
-                    "pub" "return" "break" "continue" "unsafe" "async" "await"
-                ] @keyword
-                
-                (function_item name: (identifier) @function)
-                (call_expression function: (identifier) @function)
-                (macro_invocation macro: (identifier) @function.macro)
-                
-                (type_identifier) @type
-                (primitive_type) @type.builtin
-                
-                (identifier) @variable
-                
-                ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
-                ["." ";" ":" ","] @punctuation.delimiter
-                [
-                    "+" "-" "*" "/" "%" "=" "==" "!=" 
-                    "<" ">" "<=" ">=" "&&" "||" "!"
-                ] @operator
-            "#,
-            
-            "python" => r#"
-                (comment) @comment
-                (string) @string
-                (integer) @number
-                (float) @number
-                (true) @constant
-                (false) @constant
-                (none) @constant
-                
-                [
-                    "and" "as" "assert" "async" "await" "break" "class" "continue"
-                    "def" "del" "elif" "else" "except" "exec" "finally" "for" "from"
-                    "global" "if" "import" "in" "is" "lambda" "nonlocal" "not" "or"
-                    "pass" "print" "raise" "return" "try" "while" "with" "yield"
-                ] @keyword
-                
-                (function_definition name: (identifier) @function)
-                (call function: (identifier) @function)
-                (call function: (attribute attribute: (identifier) @function))
-                (class_definition name: (identifier) @type)
-                
-                (attribute attribute: (identifier) @property)
-                (identifier) @variable
-                
-                ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
-                ["." "," ":" ";"] @punctuation.delimiter
-                [
-                    "+" "-" "*" "/" "//" "%" "**"
-                    "==" "!=" "<" ">" "<=" ">=" 
-                    "=" "+=" "-=" "*=" "/=" "//=" "%=" "**="
-                    "&" "|" "^" "~" "<<" ">>"
-                    "@"
-                ] @operator
-            "#,
-            
-            "javascript" | "typescript" => r#"
-                (comment) @comment
-                (string) @string
-                (template_string) @string
-                (regex) @string
-                (number) @number
-                (true) @constant
-                (false) @constant
-                (null) @constant
-                (undefined) @constant
-                
-                [
-                    "async" "await" "break" "case" "catch" "class" "const" "continue"
-                    "debugger" "default" "delete" "do" "else" "export" "extends"
-                    "finally" "for" "from" "function" "get" "if" "import" "in"
-                    "instanceof" "let" "new" "of" "return" "set" "static" "switch"
-                    "target" "throw" "try" "typeof" "var" "void" "while" "with"
-                    "yield"
-                ] @keyword
-                
-                (function_declaration name: (identifier) @function)
-                (function name: (identifier) @function)
-                (method_definition name: (property_identifier) @function)
-                (call_expression function: (identifier) @function)
-                (call_expression 
-                    function: (member_expression 
-                        property: (property_identifier) @function))
-                
-                (property_identifier) @property
-                (shorthand_property_identifier) @property
-                (identifier) @variable
-                
-                ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
-                [";" "." "," ":"] @punctuation.delimiter
-                [
-                    "+" "-" "*" "/" "%" "**"
-                    "=" "+=" "-=" "*=" "/=" "%=" "**="
-                    "==" "===" "!=" "!==" "<" ">" "<=" ">="
-                    "&&" "||" "!" "??" 
-                    "&" "|" "^" "~" "<<" ">>" ">>>"
-                    "++" "--" "..." "?." "=>" 
-                ] @operator
-            "#,
-            
-            "bash" => r#"
-                (comment) @comment
-                (string) @string
-                (raw_string) @string
-                (ansi_c_string) @string
-                (number) @number
-                
-                [
-                    "if" "then" "else" "elif" "fi"
-                    "case" "esac" "for" "while" "until"
-                    "do" "done" "select" "in"
-                    "function" "return" "break" "continue"
-                    "local" "readonly" "unset"
-                    "export" "declare" "typeset"
-                    "source" "alias" "unalias"
-                ] @keyword
-                
-                (function_definition name: (word) @function)
-                (command_name (word) @function)
-                
-                (variable_name) @variable
-                ((word) @constant
-                    (#match? @constant "^[A-Z_]+$"))
-                
-                "$" @punctuation.special
-                ["(" ")" "[" "]" "{" "}" "[[" "]]"] @punctuation.bracket
-                [";" "&" "|" "||" "&&" ";;" ";&" ";;&"] @punctuation.delimiter
-                ["=" "+=" "-=" "*=" "/=" "%=" "**=" "&=" "|=" "^=" 
-                 "<<=" ">>=" "==" "!=" "<" ">" "-eq" "-ne" "-lt" 
-                 "-le" "-gt" "-ge"] @operator
-            "#,
-            
-            "sql" => r#"
-                (comment) @comment
-                (marginalia) @comment
-                
-                ;; String literals
-                ((literal) @string
-                  (#match? @string "^['\"].*['\"]$"))
-                
-                ;; Number literals - only match numbers, not strings
-                ((literal) @number
-                  (#match? @number "^[0-9]+$"))
-                  
-                ((literal) @number
-                  (#match? @number "^[0-9]*\\.[0-9]+$"))
-                
-                ;; Boolean and null literals
-                (keyword_true) @constant
-                (keyword_false) @constant
-                (keyword_null) @constant
-                
-                ;; Modern SQL keywords - catch QUALIFY as identifier
-                ((identifier) @keyword
-                  (#eq? @keyword "QUALIFY"))
-                ((identifier) @keyword
-                  (#eq? @keyword "qualify"))
-                
-                ;; Core SQL keywords
-                [
-                    (keyword_select) (keyword_from) (keyword_where) (keyword_and) (keyword_or)
-                    (keyword_not) (keyword_in) (keyword_like) (keyword_is) (keyword_null)
-                    (keyword_order) (keyword_by) (keyword_group) (keyword_having) (keyword_limit)
-                    (keyword_offset) (keyword_distinct) (keyword_as) (keyword_join) (keyword_left)
-                    (keyword_right) (keyword_inner) (keyword_outer) (keyword_full) (keyword_cross)
-                    (keyword_on) (keyword_union) (keyword_intersect) (keyword_except)
-                    (keyword_insert) (keyword_into) (keyword_values) (keyword_update) (keyword_set)
-                    (keyword_delete) (keyword_create) (keyword_table) (keyword_alter) (keyword_drop)
-                    (keyword_primary) (keyword_key) (keyword_foreign) (keyword_references)
-                    (keyword_constraint) (keyword_unique) (keyword_check) (keyword_default)
-                    (keyword_index) (keyword_view) (keyword_database) (keyword_schema)
-                    (keyword_if) (keyword_exists) (keyword_cascade) (keyword_restrict)
-                    (keyword_case) (keyword_when) (keyword_then) (keyword_else) (keyword_end)
-                    (keyword_begin) (keyword_commit) (keyword_rollback) (keyword_transaction)
-                    (keyword_all) (keyword_any) (keyword_some)
-                ] @keyword
-                
-                ;; SQL data types
-                [
-                    (keyword_int) (keyword_varchar) (keyword_char) (keyword_text) (keyword_boolean)
-                    (keyword_date) (keyword_time) (keyword_timestamp) (keyword_decimal) (keyword_float)
-                    (keyword_double) (keyword_numeric) (keyword_bigint) (keyword_smallint)
-                    (keyword_tinyint) (keyword_mediumint) (keyword_real) (keyword_binary)
-                    (keyword_varbinary) (keyword_json) (keyword_uuid)
-                ] @type
-                
-                ;; Identifiers and references
-                (field name: (identifier) @property)
-                (object_reference name: (identifier) @type)
-                (relation alias: (identifier) @variable)
-                (term alias: (identifier) @variable)
-                
-                ;; Function calls
-                (invocation (object_reference name: (identifier) @function))
-                
-                ;; Operators
-                (all_fields) @operator
-                ["+" "-" "/" "%" "^" ":=" "=" "<" "<=" "!=" ">=" ">" "<>"] @operator
-                
-                ;; Punctuation
-                ["(" ")"] @punctuation.bracket
-                [";" "," "."] @punctuation.delimiter
-            "#,
-            
-            "json" => r#"
-                (string_content) @string
-                (number) @number
-                (true) @constant
-                (false) @constant
-                (null) @constant
-                
-                (pair key: (string (string_content) @property))
-                
-                ["{" "}" "[" "]"] @punctuation.bracket
-                [":" ","] @punctuation.delimiter
-            "#,
-            
-            "toml" => r#"
-                (comment) @comment
-                (string) @string
-                (integer) @number
-                (float) @number
-                (boolean) @constant
-                (local_date) @string
-                (local_date_time) @string
-                (local_time) @string
-                
-                (bare_key) @property
-                (quoted_key) @property
-                
-                ["[" "]" "[[" "]]"] @punctuation.bracket
-                ["=" "." ","] @punctuation.delimiter
-            "#,
-            
-            _ => return None,
-        };
-
-        Query::new(ts_language, query_string).ok()
-    }
-
-    pub fn update(&mut self, rope: &Rope) {
-        // Always clear tokens when updating to ensure fresh highlighting
+    pub fn update(&mut self, rope: &ropey::Rope) {
         self.tokens_by_line.clear();
 
-        // Handle empty rope to prevent panics
-        if rope.len_chars() == 0 {
-            self.tree = None;
+        if rope.len_chars() == 0 || self.language == "text" {
             self.needs_update = false;
             return;
         }
 
-        let text = rope.to_string();
-        match File::create("/tmp/thyme_debug.log") {
-            Ok(mut file) => {
-                writeln!(file, "[DEBUG] Parsing language: {}, text_len: {}\n",
-                    self.language, text.len()).expect("Failed to write to debug log");
-            }
-            Err(e) => {
-                eprintln!("[ERROR] Failed to create debug log: {}", e);
+        // Simple line-by-line highlighting for now
+        for line_idx in 0..rope.len_lines() {
+            let line_text = rope.line(line_idx).to_string();
+            let tokens = self.highlight_line(&line_text, line_idx);
+            if !tokens.is_empty() {
+                self.tokens_by_line.insert(line_idx, tokens);
             }
         }
-        
-        // Always re-parse the entire text for consistent highlighting
-        if let Some(new_tree) = self.parser.parse(&text, None) {
-            self.tree = Some(new_tree);
-            self.highlight_tree(rope);
-        }
-        
+
         self.needs_update = false;
     }
 
-    fn highlight_tree(&mut self, rope: &Rope) {
-        self.tokens_by_line.clear();
-
-        // Clone what we need to avoid borrow issues
-        let (tree_exists, query_exists) = (self.tree.is_some(), self.query.is_some());
-        if !tree_exists || !query_exists {
-            return;
-        }
-
-        let text = rope.to_string();
-        let text_bytes = text.as_bytes();
-
-        // Collect all tokens in a separate scope to avoid borrow conflicts
-        let tokens_to_add = {
-            let tree = self.tree.as_ref().unwrap();
-            let query = self.query.as_ref().unwrap();
-            
-            let mut query_cursor = QueryCursor::new();
-            let mut tokens = Vec::new();
-            let matches = query_cursor.matches(query, tree.root_node(), text_bytes);
-
-            for match_ in matches {
-                for capture in match_.captures {
-                    let node = capture.node;
-                    let start_byte = node.start_byte();
-                    let end_byte = node.end_byte();
-                    
-                    // Convert byte positions to character positions safely
-                    let start_char = self.safe_byte_to_char(rope, start_byte);
-                    let end_char = self.safe_byte_to_char(rope, end_byte);
-                    
-                    // Debug: skip invalid tokens
-                    if start_char >= end_char || start_char >= rope.len_chars() {
-                        continue;
-                    }
-                    
-                    // Determine token type from capture name
-                    let capture_name = &query.capture_names()[capture.index as usize];
-                    let token_type = match capture_name.as_str() {
-                        "keyword" => TokenType::Keyword,
-                        "string" => TokenType::String,
-                        "comment" => TokenType::Comment,
-                        "number" => TokenType::Number,
-                        "operator" => TokenType::Operator,
-                        "function" => TokenType::Function,
-                        "type" => TokenType::Type,
-                        "variable" => TokenType::Variable,
-                        "property" => TokenType::Property,
-                        "parameter" => TokenType::Parameter,
-                        "constant" => TokenType::Constant,
-                        "namespace" => TokenType::Namespace,
-                        "punctuation" | "punctuation.bracket" | "punctuation.delimiter" | "punctuation.special" => TokenType::Punctuation,
-                        "tag" => TokenType::Tag,
-                        "attribute" => TokenType::Attribute,
-                        _ => TokenType::Normal,
-                    };
-                    
-                    tokens.push((token_type, start_char, end_char));
-                }
-            }
-            
-            tokens
-        }; // Scope ends here, releasing borrows
-
-        // Now add all tokens to lines
-        for (token_type, start_char, end_char) in tokens_to_add {
-            self.add_token_to_lines(token_type, start_char, end_char, rope);
-        }
-
-        // Sort tokens by start position for each line
-        for tokens in self.tokens_by_line.values_mut() {
-            tokens.sort_by_key(|t| t.start);
+    fn highlight_line(&self, line: &str, _line_idx: usize) -> Vec<SyntaxToken> {
+        match self.language.as_str() {
+            "rust" => self.highlight_rust(line),
+            "python" => self.highlight_python(line),
+            "javascript" | "typescript" => self.highlight_javascript(line),
+            "bash" => self.highlight_bash(line),
+            "json" => self.highlight_json(line),
+            "sql" => self.highlight_sql(line),
+            "toml" => self.highlight_toml(line),
+            "html" => self.highlight_html(line),
+            "css" => self.highlight_css(line),
+            "markdown" => self.highlight_markdown(line),
+            _ => Vec::new(),
         }
     }
 
-    fn add_token_to_lines(&mut self, token_type: TokenType, start_char: usize, end_char: usize, rope: &Rope) {
-        // Find which lines this token spans
-        let start_line = rope.char_to_line(start_char);
-        let end_line = rope.char_to_line(end_char.saturating_sub(1));
+    fn highlight_rust(&self, line: &str) -> Vec<SyntaxToken> {
+        let mut tokens = Vec::new();
+        let keywords = [
+            "let", "mut", "fn", "if", "else", "while", "for", "loop", "match", "return",
+            "struct", "enum", "impl", "trait", "use", "mod", "pub", "const", "static",
+            "unsafe", "async", "await", "move", "ref", "self", "Self", "super", "crate",
+            "where", "type", "as", "in", "break", "continue", "true", "false",
+        ];
 
-        for line in start_line..=end_line {
-            let line_start_char = rope.line_to_char(line);
-            let line_end_char = if line + 1 < rope.len_lines() {
-                rope.line_to_char(line + 1).saturating_sub(1)
-            } else {
-                rope.len_chars()
-            };
-            
-            // Calculate token position relative to line start
-            let token_start_in_line = if start_char >= line_start_char {
-                start_char - line_start_char
-            } else {
-                0
-            };
-            
-            let token_end_in_line = if end_char <= line_end_char {
-                end_char - line_start_char
-            } else {
-                line_end_char - line_start_char
-            };
+        self.highlight_keywords(line, &keywords, &mut tokens);
+        self.highlight_strings(line, &mut tokens);
+        self.highlight_comments(line, "//", &mut tokens);
+        self.highlight_numbers(line, &mut tokens);
 
-            if token_start_in_line < token_end_in_line {
-                let token = SyntaxToken {
-                    token_type: token_type.clone(),
-                    start: token_start_in_line,
-                    end: token_end_in_line,
-                };
+        tokens
+    }
 
-                self.tokens_by_line
-                    .entry(line)
-                    .or_insert_with(Vec::new)
-                    .push(token);
+    fn highlight_python(&self, line: &str) -> Vec<SyntaxToken> {
+        let mut tokens = Vec::new();
+        let keywords = [
+            "def", "class", "if", "else", "elif", "while", "for", "in", "try", "except",
+            "finally", "with", "as", "import", "from", "return", "yield", "pass", "break",
+            "continue", "and", "or", "not", "is", "lambda", "global", "nonlocal", "True",
+            "False", "None", "async", "await",
+        ];
+
+        self.highlight_keywords(line, &keywords, &mut tokens);
+        self.highlight_strings(line, &mut tokens);
+        self.highlight_comments(line, "#", &mut tokens);
+        self.highlight_numbers(line, &mut tokens);
+
+        tokens
+    }
+
+    fn highlight_javascript(&self, line: &str) -> Vec<SyntaxToken> {
+        let mut tokens = Vec::new();
+        let keywords = [
+            "function", "var", "let", "const", "if", "else", "while", "for", "do", "switch",
+            "case", "default", "break", "continue", "return", "try", "catch", "finally",
+            "throw", "new", "this", "typeof", "instanceof", "in", "of", "true", "false",
+            "null", "undefined", "class", "extends", "super", "static", "async", "await",
+            "import", "export", "from", "as",
+        ];
+
+        self.highlight_keywords(line, &keywords, &mut tokens);
+        self.highlight_strings(line, &mut tokens);
+        self.highlight_comments(line, "//", &mut tokens);
+        self.highlight_numbers(line, &mut tokens);
+
+        tokens
+    }
+
+    fn highlight_bash(&self, line: &str) -> Vec<SyntaxToken> {
+        let mut tokens = Vec::new();
+        let keywords = [
+            "if", "then", "else", "elif", "fi", "case", "esac", "for", "while", "until",
+            "do", "done", "function", "return", "break", "continue", "local", "export",
+            "readonly", "declare", "unset", "source", "alias",
+        ];
+
+        self.highlight_keywords(line, &keywords, &mut tokens);
+        self.highlight_strings(line, &mut tokens);
+        self.highlight_comments(line, "#", &mut tokens);
+
+        tokens
+    }
+
+    fn highlight_json(&self, line: &str) -> Vec<SyntaxToken> {
+        let mut tokens = Vec::new();
+        let keywords = ["true", "false", "null"];
+
+        self.highlight_keywords(line, &keywords, &mut tokens);
+        self.highlight_strings(line, &mut tokens);
+        self.highlight_numbers(line, &mut tokens);
+
+        tokens
+    }
+
+    fn highlight_sql(&self, line: &str) -> Vec<SyntaxToken> {
+        let mut tokens = Vec::new();
+        let keywords = [
+            "SELECT", "FROM", "WHERE", "AND", "OR", "NOT", "IN", "LIKE", "IS", "NULL",
+            "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "DISTINCT", "AS", "JOIN",
+            "LEFT", "RIGHT", "INNER", "OUTER", "FULL", "CROSS", "ON", "UNION", "INTERSECT",
+            "EXCEPT", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE",
+            "TABLE", "ALTER", "DROP", "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "INDEX",
+            "VIEW", "DATABASE", "SCHEMA", "IF", "EXISTS", "CASCADE", "RESTRICT", "CASE",
+            "WHEN", "THEN", "ELSE", "END", "BEGIN", "COMMIT", "ROLLBACK", "TRANSACTION",
+            // Lowercase versions
+            "select", "from", "where", "and", "or", "not", "in", "like", "is", "null",
+            "order", "by", "group", "having", "limit", "offset", "distinct", "as", "join",
+            "left", "right", "inner", "outer", "full", "cross", "on", "union", "intersect",
+            "except", "insert", "into", "values", "update", "set", "delete", "create",
+            "table", "alter", "drop", "primary", "key", "foreign", "references", "index",
+            "view", "database", "schema", "if", "exists", "cascade", "restrict", "case",
+            "when", "then", "else", "end", "begin", "commit", "rollback", "transaction",
+        ];
+
+        self.highlight_keywords(line, &keywords, &mut tokens);
+        self.highlight_strings(line, &mut tokens);
+        self.highlight_comments(line, "--", &mut tokens);
+        self.highlight_numbers(line, &mut tokens);
+
+        tokens
+    }
+
+    fn highlight_toml(&self, line: &str) -> Vec<SyntaxToken> {
+        let mut tokens = Vec::new();
+        let keywords = ["true", "false"];
+
+        self.highlight_keywords(line, &keywords, &mut tokens);
+        self.highlight_strings(line, &mut tokens);
+        self.highlight_comments(line, "#", &mut tokens);
+        self.highlight_numbers(line, &mut tokens);
+
+        tokens
+    }
+
+    fn highlight_html(&self, line: &str) -> Vec<SyntaxToken> {
+        let mut tokens = Vec::new();
+        // Simple HTML highlighting - look for tags
+        let mut chars = line.char_indices().peekable();
+        
+        while let Some((i, ch)) = chars.next() {
+            if ch == '<' {
+                let start = i;
+                let mut end = i + 1;
+                let mut in_tag = true;
+                
+                while let Some((j, tag_ch)) = chars.next() {
+                    end = j + tag_ch.len_utf8();
+                    if tag_ch == '>' {
+                        in_tag = false;
+                        break;
+                    }
+                }
+                
+                if !in_tag {
+                    tokens.push(SyntaxToken {
+                        token_type: TokenType::Tag,
+                        start,
+                        end,
+                    });
+                }
+            }
+        }
+
+        self.highlight_strings(line, &mut tokens);
+        self.highlight_comments_range(line, "<!--", "-->", &mut tokens);
+
+        tokens
+    }
+
+    fn highlight_css(&self, line: &str) -> Vec<SyntaxToken> {
+        let mut tokens = Vec::new();
+        let keywords = [
+            "color", "background", "font", "margin", "padding", "border", "width", "height",
+            "display", "position", "float", "clear", "overflow", "text-align", "font-size",
+            "font-weight", "line-height", "text-decoration",
+        ];
+
+        self.highlight_keywords(line, &keywords, &mut tokens);
+        self.highlight_strings(line, &mut tokens);
+        self.highlight_comments_range(line, "/*", "*/", &mut tokens);
+
+        tokens
+    }
+
+    fn highlight_markdown(&self, line: &str) -> Vec<SyntaxToken> {
+        let mut tokens = Vec::new();
+        
+        // Headers
+        if line.starts_with('#') {
+            let header_end = line.find(' ').unwrap_or(line.len());
+            tokens.push(SyntaxToken {
+                token_type: TokenType::Keyword,
+                start: 0,
+                end: header_end,
+            });
+        }
+        
+        // Code blocks
+        if line.starts_with("```") {
+            tokens.push(SyntaxToken {
+                token_type: TokenType::String,
+                start: 0,
+                end: line.len(),
+            });
+        }
+
+        tokens
+    }
+
+    fn highlight_keywords(&self, line: &str, keywords: &[&str], tokens: &mut Vec<SyntaxToken>) {
+        for keyword in keywords {
+            let mut start = 0;
+            while let Some(pos) = line[start..].find(keyword) {
+                let keyword_start = start + pos;
+                let keyword_end = keyword_start + keyword.len();
+                
+                // Check word boundaries
+                let is_word_start = keyword_start == 0 || 
+                    !line.chars().nth(keyword_start - 1).unwrap_or(' ').is_alphanumeric();
+                let is_word_end = keyword_end >= line.len() || 
+                    !line.chars().nth(keyword_end).unwrap_or(' ').is_alphanumeric();
+                
+                if is_word_start && is_word_end {
+                    tokens.push(SyntaxToken {
+                        token_type: TokenType::Keyword,
+                        start: keyword_start,
+                        end: keyword_end,
+                    });
+                }
+                
+                start = keyword_start + 1;
+            }
+        }
+    }
+
+    fn highlight_strings(&self, line: &str, tokens: &mut Vec<SyntaxToken>) {
+        self.highlight_string_with_quote(line, '"', tokens);
+        self.highlight_string_with_quote(line, '\'', tokens);
+    }
+
+    fn highlight_string_with_quote(&self, line: &str, quote: char, tokens: &mut Vec<SyntaxToken>) {
+        let mut chars = line.char_indices();
+        let mut in_string = false;
+        let mut string_start = 0;
+        let mut escaped = false;
+
+        while let Some((i, ch)) = chars.next() {
+            if !in_string && ch == quote {
+                in_string = true;
+                string_start = i;
+                escaped = false;
+            } else if in_string {
+                if escaped {
+                    escaped = false;
+                } else if ch == '\\' {
+                    escaped = true;
+                } else if ch == quote {
+                    tokens.push(SyntaxToken {
+                        token_type: TokenType::String,
+                        start: string_start,
+                        end: i + ch.len_utf8(),
+                    });
+                    in_string = false;
+                }
+            }
+        }
+    }
+
+    fn highlight_comments(&self, line: &str, comment_prefix: &str, tokens: &mut Vec<SyntaxToken>) {
+        if let Some(pos) = line.find(comment_prefix) {
+            tokens.push(SyntaxToken {
+                token_type: TokenType::Comment,
+                start: pos,
+                end: line.len(),
+            });
+        }
+    }
+
+    fn highlight_comments_range(&self, line: &str, start_comment: &str, end_comment: &str, tokens: &mut Vec<SyntaxToken>) {
+        let mut start = 0;
+        while let Some(comment_start) = line[start..].find(start_comment) {
+            let absolute_start = start + comment_start;
+            if let Some(comment_end_rel) = line[absolute_start + start_comment.len()..].find(end_comment) {
+                let absolute_end = absolute_start + start_comment.len() + comment_end_rel + end_comment.len();
+                tokens.push(SyntaxToken {
+                    token_type: TokenType::Comment,
+                    start: absolute_start,
+                    end: absolute_end,
+                });
+                start = absolute_end;
+            } else {
+                // Comment extends to end of line
+                tokens.push(SyntaxToken {
+                    token_type: TokenType::Comment,
+                    start: absolute_start,
+                    end: line.len(),
+                });
+                break;
+            }
+        }
+    }
+
+    fn highlight_numbers(&self, line: &str, tokens: &mut Vec<SyntaxToken>) {
+        let mut chars = line.char_indices().peekable();
+        
+        while let Some((i, ch)) = chars.next() {
+            if ch.is_ascii_digit() {
+                let start = i;
+                let mut end = i + ch.len_utf8();
+                let mut has_dot = false;
+                
+                // Continue collecting digits and at most one decimal point
+                while let Some(&(j, next_ch)) = chars.peek() {
+                    if next_ch.is_ascii_digit() {
+                        end = j + next_ch.len_utf8();
+                        chars.next();
+                    } else if next_ch == '.' && !has_dot {
+                        // Look ahead to see if there's a digit after the dot
+                        let mut temp_chars = chars.clone();
+                        temp_chars.next(); // Skip the dot
+                        if let Some((_, after_dot)) = temp_chars.next() {
+                            if after_dot.is_ascii_digit() {
+                                has_dot = true;
+                                end = j + next_ch.len_utf8();
+                                chars.next();
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                
+                tokens.push(SyntaxToken {
+                    token_type: TokenType::Number,
+                    start,
+                    end,
+                });
             }
         }
     }
@@ -537,17 +426,10 @@ impl SyntaxHighlighter {
 
     pub fn mark_dirty(&mut self) {
         self.needs_update = true;
-        // Clear existing tokens to force fresh highlighting
         self.tokens_by_line.clear();
     }
 
     pub fn force_update(&mut self) {
         self.needs_update = true;
-    }
-    
-    fn safe_byte_to_char(&self, rope: &Rope, byte_pos: usize) -> usize {
-        // Try to use rope's byte_to_char if available, otherwise fall back to manual conversion
-        // For ropey 1.6, byte_to_char should be available
-        rope.byte_to_char(byte_pos.min(rope.len_bytes()))
     }
 }

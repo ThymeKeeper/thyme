@@ -1,7 +1,10 @@
 // src/editor.rs
 
-use crate::buffer::Buffer;
-use crate::config::{Config, Theme};
+use crate::{
+    buffer::Buffer,
+    config::{Config, Theme},
+    text_utils::wrap_line
+};
 use anyhow::Result;
 use std::path::PathBuf;
 
@@ -12,10 +15,13 @@ pub struct Editor {
     // Language selection mode
     pub language_selection_mode: bool,
     pub language_selection_index: usize,
+    pub language_selection_scroll_offset: usize,
     // Theme selection mode
     pub theme_selection_mode: bool,
     pub theme_selection_index: usize,
     pub available_themes: Vec<(String, String)>, // (filename, display_name)
+    // Help mode
+    pub help_mode: bool,
 }
 
 impl Editor {
@@ -26,9 +32,11 @@ impl Editor {
             viewport_line: 0,
             language_selection_mode: false,
             language_selection_index: 0,
+            language_selection_scroll_offset: 0,
             theme_selection_mode: false,
             theme_selection_index: 0,
             available_themes: Vec::new(),
+            help_mode: false,
         }
     }
 
@@ -64,12 +72,14 @@ impl Editor {
         if self.current_buffer().is_some() {
             self.language_selection_mode = true;
             self.language_selection_index = 0;
+            self.language_selection_scroll_offset = 0;
             
             // Set the current index to match the current language
             if let Some(buffer) = self.current_buffer() {
                 let supported_languages = Buffer::get_supported_languages();
                 if let Some(pos) = supported_languages.iter().position(|&lang| lang == buffer.language) {
                     self.language_selection_index = pos;
+                    self.update_language_scroll();
                 }
             }
         }
@@ -82,10 +92,13 @@ impl Editor {
     pub fn language_selection_up(&mut self) {
         if self.language_selection_mode {
             let languages = Buffer::get_supported_languages();
-            if self.language_selection_index > 0 {
-                self.language_selection_index -= 1;
-            } else {
-                self.language_selection_index = languages.len() - 1;
+            if !languages.is_empty() {
+                if self.language_selection_index > 0 {
+                    self.language_selection_index -= 1;
+                } else {
+                    self.language_selection_index = languages.len() - 1;
+                }
+                self.update_language_scroll();
             }
         }
     }
@@ -93,11 +106,27 @@ impl Editor {
     pub fn language_selection_down(&mut self) {
         if self.language_selection_mode {
             let languages = Buffer::get_supported_languages();
-            if self.language_selection_index < languages.len() - 1 {
-                self.language_selection_index += 1;
-            } else {
-                self.language_selection_index = 0;
+            if !languages.is_empty() {
+                if self.language_selection_index < languages.len() - 1 {
+                    self.language_selection_index += 1;
+                } else {
+                    self.language_selection_index = 0;
+                }
+                self.update_language_scroll();
             }
+        }
+    }
+
+    fn update_language_scroll(&mut self) {
+        let max_visible_items = 15; // Same as in UI
+        
+        // If selected item is before the current scroll offset, scroll up
+        if self.language_selection_index < self.language_selection_scroll_offset {
+            self.language_selection_scroll_offset = self.language_selection_index;
+        }
+        // If selected item is beyond the visible area, scroll down
+        else if self.language_selection_index >= self.language_selection_scroll_offset + max_visible_items {
+            self.language_selection_scroll_offset = self.language_selection_index - max_visible_items + 1;
         }
     }
 
@@ -123,11 +152,6 @@ impl Editor {
         }
     }
 
-    pub fn set_current_buffer_language(&mut self, language: &str) {
-        if let Some(buffer) = self.current_buffer_mut() {
-            buffer.set_language(language);
-        }
-    }
 
     // Theme selection methods
     pub fn enter_theme_selection_mode(&mut self, current_theme_name: &str) -> Result<()> {
@@ -231,7 +255,7 @@ impl Editor {
             &line_text
         };
         
-        let wrapped_segments = wrap_line_simple(line_text_for_display, content_width);
+        let wrapped_segments = wrap_line(line_text_for_display, content_width);
         
         // Find which visual line segment the cursor is in
         for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
@@ -295,7 +319,7 @@ impl Editor {
                     } else {
                         &line_text
                     };
-                    let wrapped_segments = wrap_line_simple(line_text_for_display, content_width);
+                    let wrapped_segments = wrap_line(line_text_for_display, content_width);
                     
                     // Find which segment we're in
                     for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
@@ -353,7 +377,7 @@ impl Editor {
                     } else {
                         &line_text
                     };
-                    let wrapped_segments = wrap_line_simple(line_text_for_display, content_width);
+                    let wrapped_segments = wrap_line(line_text_for_display, content_width);
                     
                     // Find which segment we're in
                     for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
@@ -415,7 +439,7 @@ impl Editor {
         } else {
             &current_line_text
         };
-        let wrapped_segments = wrap_line_simple(line_text_for_display, content_width);
+        let wrapped_segments = wrap_line(line_text_for_display, content_width);
         
         // Find which visual line segment we're currently in
         let mut current_segment_idx = None;
@@ -470,7 +494,7 @@ impl Editor {
                         } else {
                             &new_line_text
                         };
-                        let new_wrapped = wrap_line_simple(new_line_for_display, content_width);
+                        let new_wrapped = wrap_line(new_line_for_display, content_width);
                         
                         if !new_wrapped.is_empty() {
                             // FIXED: Always go to the LAST visual line of the previous logical line
@@ -509,7 +533,7 @@ impl Editor {
         } else {
             &current_line_text
         };
-        let wrapped_segments = wrap_line_simple(line_text_for_display, content_width);
+        let wrapped_segments = wrap_line(line_text_for_display, content_width);
         
         // Find which visual line segment we're currently in
         let mut current_segment_idx = None;
@@ -567,7 +591,7 @@ impl Editor {
                         } else {
                             &new_line_text
                         };
-                        let new_wrapped = wrap_line_simple(new_line_for_display, content_width);
+                        let new_wrapped = wrap_line(new_line_for_display, content_width);
                         
                         if !new_wrapped.is_empty() {
                             // FIXED: Always go to the FIRST visual line of the next logical line
@@ -695,59 +719,14 @@ impl Editor {
             self.viewport_line = self.viewport_line.min(cursor_line);
         }
     }
+
+    // Help mode methods
+    pub fn enter_help_mode(&mut self) {
+        self.help_mode = true;
+    }
+
+    pub fn exit_help_mode(&mut self) {
+        self.help_mode = false;
+    }
 }
 
-// Move wrap_line_simple to be a standalone function to avoid borrowing issues
-fn wrap_line_simple(text: &str, width: usize) -> Vec<(String, usize)> {
-    if width == 0 {
-        return vec![(text.to_string(), 0)];
-    }
-
-    let mut result = Vec::new();
-    let chars: Vec<char> = text.chars().collect();
-    
-    if chars.is_empty() {
-        return vec![(String::new(), 0)];
-    }
-
-    let mut start_pos = 0;
-    
-    while start_pos < chars.len() {
-        let mut end_pos = (start_pos + width).min(chars.len());
-        
-        // If we're not at the end of the text, try to break at a word boundary
-        if end_pos < chars.len() {
-            // Look backwards from end_pos to find a space
-            let mut break_pos = end_pos;
-            for i in (start_pos..end_pos).rev() {
-                if chars[i] == ' ' {
-                    break_pos = i;
-                    break;
-                }
-            }
-            
-            // If we found a space and it's not too close to the start, use it
-            if break_pos > start_pos && (break_pos - start_pos) > width / 4 {
-                end_pos = break_pos;
-            }
-        }
-        
-        // Extract the segment - DON'T trim trailing spaces to preserve cursor positioning
-        let segment: String = chars[start_pos..end_pos].iter().collect();
-        
-        result.push((segment, start_pos));
-        
-        // Move to the next segment, skipping any spaces at the break point ONLY if we broke at a space
-        if end_pos < chars.len() && chars[end_pos] == ' ' {
-            start_pos = end_pos + 1;
-        } else {
-            start_pos = end_pos;
-        }
-    }
-
-    if result.is_empty() {
-        result.push((String::new(), 0));
-    }
-
-    result
-}

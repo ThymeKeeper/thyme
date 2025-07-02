@@ -1,31 +1,14 @@
 // src/buffer.rs
 
-use crate::{config::Config, syntax::SyntaxHighlighter};
+use crate::{
+    config::Config, 
+    cursor::Cursor, 
+    syntax::SyntaxHighlighter,
+    text_utils::{detect_language_from_path, get_language_display_name, get_supported_languages}
+};
 use anyhow::Result;
 use ropey::Rope;
 use std::{path::PathBuf, time::Instant};
-
-#[derive(Debug, Clone)]
-pub struct Cursor {
-    pub line: usize,
-    pub column: usize,
-    pub preferred_visual_column: usize, // Position within the visual line segment
-}
-
-impl Cursor {
-    pub fn new() -> Self {
-        Self { 
-            line: 0, 
-            column: 0,
-            preferred_visual_column: 0,
-        }
-    }
-    
-    // Update preferred column when moving horizontally or typing
-    pub fn update_preferred_visual_column(&mut self, visual_column: usize) {
-        self.preferred_visual_column = visual_column;
-    }
-}
 
 pub struct Buffer {
     pub rope: Rope,
@@ -58,7 +41,7 @@ impl Buffer {
     pub fn from_file(path: PathBuf) -> Result<Self> {
         let content = std::fs::read_to_string(&path)?;
         let rope = Rope::from_str(&content);
-        let language = detect_language(&path);
+        let language = detect_language_from_path(&path);
         
         let mut syntax_highlighter = SyntaxHighlighter::new();
         syntax_highlighter.set_language(&language);
@@ -97,31 +80,12 @@ impl Buffer {
 
     // Get list of supported languages
     pub fn get_supported_languages() -> Vec<&'static str> {
-        vec![
-            "text",       // Plain text (no highlighting)
-            "rust",       // Rust (tree-sitter v0.20)
-            "python",     // Python (tree-sitter v0.20)
-            "javascript", // JavaScript/TypeScript (tree-sitter v0.20)
-            "bash",       // Bash/Shell (tree-sitter v0.20)
-            "json",       // JSON (tree-sitter v0.20)
-            "sql",        // SQL (tree-sitter v0.22)
-            "toml",       // TOML (tree-sitter v0.22)
-        ]
+        get_supported_languages()
     }
 
     // Get a display name for a language
     pub fn get_language_display_name(language: &str) -> &'static str {
-        match language {
-            "text" => "Plain Text",
-            "rust" => "Rust",
-            "python" => "Python", 
-            "javascript" => "JavaScript/TypeScript",
-            "bash" => "Bash/Shell",
-            "json" => "JSON",
-            "sql" => "SQL",
-            "toml" => "TOML",
-            _ => "Unknown",
-        }
+        get_language_display_name(language)
     }
 
     pub fn insert_char(&mut self, c: char) {
@@ -314,45 +278,3 @@ impl Buffer {
     }
 }
 
-fn detect_language(path: &PathBuf) -> String {
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/tmp/thyme_debug.log")
-        .and_then(|mut f| std::io::Write::write_all(&mut f, 
-            format!("[DEBUG] Detecting language for path: {:?}\n", path).as_bytes()));
-    if let Some(extension) = path.extension().and_then(|ext| ext.to_str()) {
-        let _ = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("/tmp/thyme_debug.log")
-            .and_then(|mut f| std::io::Write::write_all(&mut f, 
-                format!("[DEBUG] Found extension: {}\n", extension).as_bytes()));
-        let language = match extension {
-            "rs" => "rust".to_string(),
-            "py" => "python".to_string(),
-            "js" | "jsx" => "javascript".to_string(),
-            "ts" | "tsx" => "javascript".to_string(),
-            "sh" | "bash" => "bash".to_string(),
-            "json" => "json".to_string(),
-            "toml" => "toml".to_string(),
-            "sql" | "mysql" | "pgsql" | "sqlite" => "sql".to_string(),
-            _ => "text".to_string(),
-        };
-        let _ = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("/tmp/thyme_debug.log")
-            .and_then(|mut f| std::io::Write::write_all(&mut f, 
-                format!("[DEBUG] Detected language: {}\n", language).as_bytes()));
-        language
-    } else {
-        let _ = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("/tmp/thyme_debug.log")
-            .and_then(|mut f| std::io::Write::write_all(&mut f, 
-                b"[DEBUG] No extension found, defaulting to text\n"));
-        "text".to_string()
-    }
-}

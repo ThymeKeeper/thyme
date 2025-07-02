@@ -19,24 +19,5 @@ serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 dirs = "5.0"
 
-# Tree-sitter - use a single version
-tree-sitter = "0.20.10"
-
-# Language parsers for tree-sitter 0.20
-tree-sitter-rust = "0.20.4"
-tree-sitter-python = "0.20.4"
-tree-sitter-javascript = "0.20.4"
-tree-sitter-bash = "0.20.5"
-tree-sitter-json = "0.20.2"
-tree-sitter-toml = "0.20.0"
-
-# Build dependencies for compiling tree-sitter-sql from source
-[build-dependencies]
-cc = "1.0"
-
-[features]
-default = ["sql"]
-sql = []
-
 [dev-dependencies]
 # Add any test dependencies here if needed

@@ -88,7 +88,12 @@ impl App {
     }
 
     async fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
-        // Handle language selection mode first
+        // Handle help mode first
+        if self.editor.help_mode {
+            return self.handle_help_key(key).await;
+        }
+
+        // Handle language selection mode
         if self.editor.language_selection_mode {
             return self.handle_language_selection_key(key).await;
         }
@@ -156,13 +161,22 @@ impl App {
                 // Allow quit even in language selection mode
                 self.running = false;
             }
-            // Quick language selection with number keys
+            // Quick language selection with number keys (for visible items)
             KeyCode::Char(c) if c.is_ascii_digit() => {
                 let digit = c.to_digit(10).unwrap() as usize;
                 let languages = Buffer::get_supported_languages();
-                if digit > 0 && digit <= languages.len() {
-                    self.editor.language_selection_index = digit - 1;
-                    self.editor.apply_selected_language();
+                let scroll_offset = self.editor.language_selection_scroll_offset;
+                let max_visible_items = 15;
+                let visible_end = (scroll_offset + max_visible_items).min(languages.len());
+                let visible_count = visible_end - scroll_offset;
+                
+                if digit > 0 && digit <= visible_count && !languages.is_empty() {
+                    let visible_index = digit - 1;
+                    let actual_index = scroll_offset + visible_index;
+                    if actual_index < languages.len() {
+                        self.editor.language_selection_index = actual_index;
+                        self.editor.apply_selected_language();
+                    }
                 }
             }
             _ => {
@@ -218,9 +232,11 @@ impl App {
             // Quick theme selection with number keys
             KeyCode::Char(c) if c.is_ascii_digit() => {
                 let digit = c.to_digit(10).unwrap() as usize;
-                if digit > 0 && digit <= self.editor.available_themes.len() {
-                    self.editor.theme_selection_index = digit - 1;
-                    self.preview_selected_theme();
+                if digit > 0 && digit <= self.editor.available_themes.len() && !self.editor.available_themes.is_empty() {
+                    let index = digit - 1;
+                    if index < self.editor.available_themes.len() {
+                        self.editor.theme_selection_index = index;
+                        self.preview_selected_theme();
                     
                     if let Some(theme_filename) = self.editor.get_selected_theme() {
                         if theme_filename == "_default" {
@@ -239,10 +255,28 @@ impl App {
                             eprintln!("Failed to save config: {}", e);
                         }
                     }
+                    }
                 }
             }
             _ => {
                 // Ignore other keys in theme selection mode
+            }
+        }
+        Ok(())
+    }
+
+    // Handle keys when in help mode
+    async fn handle_help_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                // Allow quit even in help mode
+                self.running = false;
+            }
+            KeyCode::Esc | KeyCode::F(1) | KeyCode::Char('q') => {
+                self.editor.exit_help_mode();
+            }
+            _ => {
+                // Ignore other keys in help mode
             }
         }
         Ok(())
@@ -270,9 +304,8 @@ impl App {
             .unwrap_or(80);
         
         let content_width = terminal_width
-            .saturating_sub(2) // outer margins
-            .saturating_sub((self.config.margins.horizontal * 2) as usize) // editor margins
-            .saturating_sub(2); // editor borders
+            .saturating_sub((self.config.margins.horizontal * 2) as usize); // editor margins only
+            // No outer layout margin or border subtraction
             
         // Ensure minimum width to prevent issues
         content_width.max(10)
@@ -323,6 +356,12 @@ impl App {
             if let Err(e) = self.editor.enter_theme_selection_mode(current_theme_name) {
                 eprintln!("Failed to enter theme selection mode: {}", e);
             }
+            return Ok(true);
+        }
+
+        // Help keybinding
+        if key == keybindings.help {
+            self.editor.enter_help_mode();
             return Ok(true);
         }
 
