@@ -392,9 +392,40 @@ impl Ui {
     ) -> (Vec<WrappedLine>, Option<(usize, usize)>) {
         let mut wrapped_lines = Vec::new();
         let mut cursor_visual_pos = None;
-
-        let start_line = editor.viewport_line;
-        let end_line = buffer.rope.len_lines();
+        let scrolloff = config.scrolloff as usize;
+        
+        // Calculate virtual line boundaries
+        let virtual_end = scrolloff; // Number of virtual lines at end
+        let total_file_lines = buffer.rope.len_lines();
+        
+        // Adjust viewport to account for virtual lines (removed unused variables)
+        
+        let mut current_visual_line = 0;
+        
+        // Add virtual lines at the start if viewport is negative (above file start)
+        if editor.viewport_line < 0 {
+            let virtual_lines_to_show = (-editor.viewport_line) as usize;
+            for _ in 0..virtual_lines_to_show.min(content_height) {
+                wrapped_lines.push(WrappedLine {
+                    content: String::new(), // Empty virtual line
+                    logical_line: usize::MAX, // Mark as virtual
+                    line_start_col: 0,
+                    line_end_col: 0,
+                });
+                current_visual_line += 1;
+                if current_visual_line >= content_height {
+                    break;
+                }
+            }
+        }
+        
+        // Add actual file content
+        let start_line = if editor.viewport_line >= 0 {
+            editor.viewport_line as usize
+        } else {
+            0
+        };
+        let end_line = total_file_lines;
 
         for logical_line in start_line..end_line {
             let line_text = buffer.get_line_text(logical_line);
@@ -435,9 +466,37 @@ impl Ui {
                 }
 
                 // Stop if we've filled the visible area
-                if wrapped_lines.len() >= content_height {
+                current_visual_line = wrapped_lines.len();
+                if current_visual_line >= content_height {
                     return (wrapped_lines, cursor_visual_pos);
                 }
+            }
+        }
+        
+        // Add virtual lines at the end if we've displayed all file content and have space
+        current_visual_line = wrapped_lines.len();
+        
+        // Check if we've shown all the file content
+        let lines_from_file = if editor.viewport_line < 0 {
+            // If viewport is negative, we need to account for that
+            end_line - start_line
+        } else {
+            // Normal case
+            (end_line - start_line).min(current_visual_line)
+        };
+        
+        // Only add virtual lines at end if we've reached the end of the file content
+        if current_visual_line < content_height && start_line + lines_from_file >= total_file_lines {
+            let remaining_space = content_height - current_visual_line;
+            let virtual_lines_to_add = remaining_space.min(virtual_end);
+            
+            for _ in 0..virtual_lines_to_add {
+                wrapped_lines.push(WrappedLine {
+                    content: String::new(), // Empty virtual line
+                    logical_line: usize::MAX, // Mark as virtual
+                    line_start_col: 0,
+                    line_end_col: 0,
+                });
             }
         }
 

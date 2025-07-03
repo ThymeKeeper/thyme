@@ -113,6 +113,7 @@ impl App {
 
         // Calculate content width for word-wrap-aware movement
         let content_width = self.calculate_content_width();
+        let visible_lines = self.calculate_visible_lines();
         
         // Handle standard editor keys
         match key.code {
@@ -168,11 +169,11 @@ impl App {
             }
             KeyCode::Home => self.editor.move_cursor_home(),
             KeyCode::End => self.editor.move_cursor_end(),
-            KeyCode::PageUp => self.editor.move_cursor_page_up(),
-            KeyCode::PageDown => self.editor.move_cursor_page_down(),
-            KeyCode::Backspace => self.editor.delete_char_backwards(content_width),
+            KeyCode::PageUp => self.editor.move_cursor_page_up(&self.config, visible_lines),
+            KeyCode::PageDown => self.editor.move_cursor_page_down(&self.config, visible_lines),
+            KeyCode::Backspace => self.editor.delete_char_backwards(content_width, &self.config, visible_lines),
             KeyCode::Delete => self.editor.delete_char_forwards(),
-            KeyCode::Enter => self.editor.insert_newline(),
+            KeyCode::Enter => self.editor.insert_newline(&self.config, visible_lines),
             KeyCode::Tab => self.editor.insert_tab(content_width),
             KeyCode::Char(c) => self.editor.insert_char(c, content_width),
             _ => {}
@@ -355,6 +356,20 @@ impl App {
         // Ensure minimum width to prevent issues
         content_width.max(10)
     }
+    
+    fn calculate_visible_lines(&self) -> usize {
+        let terminal_height = crossterm::terminal::size()
+            .map(|(_, h)| h as usize)
+            .unwrap_or(24);
+        
+        // Account for status line (1 line) and vertical margins
+        let visible_lines = terminal_height
+            .saturating_sub(1) // status line
+            .saturating_sub((self.config.margins.vertical * 2) as usize); // vertical margins
+            
+        // Ensure minimum height
+        visible_lines.max(1)
+    }
 
     async fn handle_custom_keybindings(&mut self, key: KeyEvent) -> Result<bool> {
         let keybindings = &self.config.keybindings;
@@ -452,10 +467,10 @@ impl App {
                 
                 if extend_selection {
                     // Shift+click - extend selection to mouse position
-                    self.editor.handle_shift_click(mouse.column, mouse.row, &self.config);
+                    self.editor.handle_shift_click(mouse.column, mouse.row, &self.config, self.calculate_visible_lines());
                 } else {
                     // Regular click - move cursor and clear selection
-                    self.editor.handle_regular_click(mouse.column, mouse.row, &self.config);
+                    self.editor.handle_regular_click(mouse.column, mouse.row, &self.config, self.calculate_visible_lines());
                     // Prepare for potential drag selection
                     self.mouse_dragging = true;
                 }
@@ -463,7 +478,7 @@ impl App {
             MouseEventKind::Drag(MouseButton::Left) => {
                 // Mouse drag - create/extend selection
                 if self.mouse_dragging {
-                    self.editor.handle_mouse_drag(mouse.column, mouse.row, &self.config);
+                    self.editor.handle_mouse_drag(mouse.column, mouse.row, &self.config, self.calculate_visible_lines());
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
@@ -485,7 +500,7 @@ impl App {
                 buffer.cursor.clear_selection();
             }
         }
-        self.editor.move_cursor_left(content_width);
+        self.editor.move_cursor_left(content_width, &self.config, self.calculate_visible_lines());
     }
     
     fn handle_cursor_movement_right(&mut self, extend_selection: bool, content_width: usize) {
@@ -496,7 +511,7 @@ impl App {
                 buffer.cursor.clear_selection();
             }
         }
-        self.editor.move_cursor_right(content_width);
+        self.editor.move_cursor_right(content_width, &self.config, self.calculate_visible_lines());
     }
     
     fn handle_cursor_movement_up(&mut self, extend_selection: bool, content_width: usize) {
@@ -507,7 +522,7 @@ impl App {
                 buffer.cursor.clear_selection();
             }
         }
-        self.editor.move_cursor_up(self.config.word_wrap, content_width);
+        self.editor.move_cursor_up(self.config.word_wrap, content_width, &self.config, self.calculate_visible_lines());
     }
     
     fn handle_cursor_movement_down(&mut self, extend_selection: bool, content_width: usize) {
@@ -518,6 +533,6 @@ impl App {
                 buffer.cursor.clear_selection();
             }
         }
-        self.editor.move_cursor_down(self.config.word_wrap, content_width);
+        self.editor.move_cursor_down(self.config.word_wrap, content_width, &self.config, self.calculate_visible_lines());
     }
 }

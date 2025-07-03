@@ -11,7 +11,7 @@ use std::path::PathBuf;
 pub struct Editor {
     pub buffers: Vec<Buffer>,
     pub active_buffer: usize,
-    pub viewport_line: usize,
+    pub viewport_line: isize,
     // Language selection mode
     pub language_selection_mode: bool,
     pub language_selection_index: usize,
@@ -315,23 +315,23 @@ impl Editor {
         }
     }
 
-    pub fn move_cursor_left(&mut self, content_width: usize) {
+    pub fn move_cursor_left(&mut self, content_width: usize, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.move_cursor_left();
             self.update_preferred_visual_column_with_width(content_width);
-            self.adjust_viewport();
+            self.adjust_viewport(config, visible_lines);
         }
     }
 
-    pub fn move_cursor_right(&mut self, content_width: usize) {
+    pub fn move_cursor_right(&mut self, content_width: usize, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.move_cursor_right();
             self.update_preferred_visual_column_with_width(content_width);
-            self.adjust_viewport();
+            self.adjust_viewport(config, visible_lines);
         }
     }
 
-    pub fn move_cursor_up(&mut self, word_wrap: bool, content_width: usize) {
+    pub fn move_cursor_up(&mut self, word_wrap: bool, content_width: usize, config: &Config, visible_lines: usize) {
         if word_wrap {
             // Check if we're on the first visual line of the buffer
             if let Some(buffer) = self.current_buffer() {
@@ -360,7 +360,7 @@ impl Editor {
                                     buffer.cursor.column = 0;
                                     buffer.cursor.preferred_visual_column = 0;
                                 }
-                                self.adjust_viewport();
+                                self.adjust_viewport(config, visible_lines);
                                 return;
                             }
                             break;
@@ -377,7 +377,7 @@ impl Editor {
                         buffer.cursor.column = 0;
                         buffer.cursor.preferred_visual_column = 0;
                     }
-                    self.adjust_viewport();
+                    self.adjust_viewport(config, visible_lines);
                     return;
                 }
             }
@@ -385,10 +385,10 @@ impl Editor {
                 buffer.move_cursor_up();
             }
         }
-        self.adjust_viewport();
+        self.adjust_viewport(config, visible_lines);
     }
 
-    pub fn move_cursor_down(&mut self, word_wrap: bool, content_width: usize) {
+    pub fn move_cursor_down(&mut self, word_wrap: bool, content_width: usize, config: &Config, visible_lines: usize) {
         if word_wrap {
             // Check if we're on the last visual line of the buffer
             if let Some(buffer) = self.current_buffer() {
@@ -420,7 +420,7 @@ impl Editor {
                                     // Update preferred visual column to the new end position
                                     self.update_preferred_visual_column_with_width(content_width);
                                 }
-                                self.adjust_viewport();
+                                self.adjust_viewport(config, visible_lines);
                                 return;
                             }
                             break;
@@ -439,7 +439,7 @@ impl Editor {
                         // Update preferred visual column to the new end position
                         self.update_preferred_visual_column_with_width(content_width);
                     }
-                    self.adjust_viewport();
+                    self.adjust_viewport(config, visible_lines);
                     return;
                 }
             }
@@ -447,7 +447,7 @@ impl Editor {
                 buffer.move_cursor_down();
             }
         }
-        self.adjust_viewport();
+        self.adjust_viewport(config, visible_lines);
     }
 
     fn move_cursor_up_visual(&mut self, content_width: usize) {
@@ -670,21 +670,21 @@ impl Editor {
         }
     }
 
-    pub fn move_cursor_page_up(&mut self) {
+    pub fn move_cursor_page_up(&mut self, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             for _ in 0..10 {
                 buffer.move_cursor_up();
             }
-            self.adjust_viewport();
+            self.adjust_viewport(config, visible_lines);
         }
     }
 
-    pub fn move_cursor_page_down(&mut self) {
+    pub fn move_cursor_page_down(&mut self, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             for _ in 0..10 {
                 buffer.move_cursor_down();
             }
-            self.adjust_viewport();
+            self.adjust_viewport(config, visible_lines);
         }
     }
 
@@ -696,10 +696,10 @@ impl Editor {
         }
     }
 
-    pub fn insert_newline(&mut self) {
+    pub fn insert_newline(&mut self, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.insert_newline();
-            self.adjust_viewport();
+            self.adjust_viewport(config, visible_lines);
         }
     }
 
@@ -713,11 +713,11 @@ impl Editor {
         }
     }
 
-    pub fn delete_char_backwards(&mut self, content_width: usize) {
+    pub fn delete_char_backwards(&mut self, content_width: usize, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.delete_char_backwards();
             self.update_preferred_visual_column_with_width(content_width);
-            self.adjust_viewport();
+            self.adjust_viewport(config, visible_lines);
         }
     }
 
@@ -727,20 +727,42 @@ impl Editor {
         }
     }
 
-    fn adjust_viewport(&mut self) {
+    fn adjust_viewport(&mut self, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer() {
             let cursor_line = buffer.cursor.line;
-            let visible_lines = 20; // This should ideally come from the UI size
+            let scrolloff = config.scrolloff as usize;
+            let total_file_lines = buffer.rope.len_lines();
             
-            // Simple viewport adjustment - keep cursor within visible area
-            if cursor_line < self.viewport_line {
-                self.viewport_line = cursor_line;
-            } else if cursor_line >= self.viewport_line + visible_lines {
-                self.viewport_line = cursor_line.saturating_sub(visible_lines - 1);
+            // Calculate the effective scrollable area
+            let effective_visible = visible_lines.saturating_sub(scrolloff * 2);
+            if effective_visible == 0 {
+                // If scrolloff is too large for the viewport, just center the cursor
+                self.viewport_line = cursor_line as isize - visible_lines as isize / 2;
+                return;
             }
             
-            // Ensure viewport doesn't go beyond the start
-            self.viewport_line = self.viewport_line.min(cursor_line);
+            // Calculate the scrolloff boundaries within the current viewport
+            let top_boundary = self.viewport_line + scrolloff as isize;
+            let bottom_boundary = self.viewport_line + (visible_lines - scrolloff - 1) as isize;
+            
+            // Adjust viewport if cursor is outside the scrolloff zone
+            if (cursor_line as isize) < top_boundary {
+                // Cursor is above the top scrolloff zone - scroll up
+                self.viewport_line = cursor_line as isize - scrolloff as isize;
+            } else if (cursor_line as isize) > bottom_boundary {
+                // Cursor is below the bottom scrolloff zone - scroll down
+                self.viewport_line = cursor_line as isize - (visible_lines - scrolloff - 1) as isize;
+            }
+            
+            // Allow viewport to go negative (showing virtual lines above file)
+            // But limit how far negative we can go (scrolloff lines above first line)
+            let min_viewport = -(scrolloff as isize);
+            // Don't scroll past the end when accounting for virtual lines at the end
+            let max_viewport = (total_file_lines as isize + scrolloff as isize) - visible_lines as isize;
+            
+            self.viewport_line = self.viewport_line
+                .max(min_viewport)
+                .min(max_viewport);
         }
     }
 
@@ -877,7 +899,14 @@ impl Editor {
                 self.mouse_to_wrapped_position_complex(relative_x, relative_y, content_width)
             } else {
                 // Simple case: no word wrap
-                let line = self.viewport_line + relative_y;
+                let line = if self.viewport_line < 0 {
+                    if relative_y < (-self.viewport_line) as usize {
+                        return None; // Click is in virtual space above file
+                    }
+                    relative_y - (-self.viewport_line) as usize
+                } else {
+                    (self.viewport_line as usize) + relative_y
+                };
                 
                 // Ensure line is within buffer bounds
                 if line >= buffer.rope.len_lines() {
@@ -933,7 +962,21 @@ impl Editor {
             // and column corresponds to the visual position (relative_x, relative_y)
             let mut current_visual_line = 0;
             
-            for logical_line in self.viewport_line.. {
+            let start_logical_line = if self.viewport_line < 0 { 0 } else { self.viewport_line as usize };
+            let virtual_offset = if self.viewport_line < 0 { (-self.viewport_line) as usize } else { 0 };
+            
+            // Account for virtual lines at the start
+            if self.viewport_line < 0 && relative_y < virtual_offset {
+                return None; // Click is in virtual space
+            }
+            
+            let adjusted_y = if self.viewport_line < 0 {
+                relative_y.saturating_sub(virtual_offset)
+            } else {
+                relative_y
+            };
+            
+            for logical_line in start_logical_line.. {
                 if logical_line >= buffer.rope.len_lines() {
                     break;
                 }
@@ -949,7 +992,7 @@ impl Editor {
                 
                 // Check each wrapped segment of this logical line
                 for (_segment_idx, (segment_text, start_col)) in wrapped_segments.iter().enumerate() {
-                    if current_visual_line == relative_y {
+                    if current_visual_line == adjusted_y {
                         // This is the target visual line!
                         let segment_length = segment_text.chars().count();
                         let column_in_segment = relative_x.min(segment_length);
@@ -961,7 +1004,7 @@ impl Editor {
                 
                 // If this line has no wrapped segments (empty line), still count it as one visual line
                 if wrapped_segments.is_empty() {
-                    if current_visual_line == relative_y {
+                    if current_visual_line == adjusted_y {
                         return Some((logical_line, 0));
                     }
                     current_visual_line += 1;
@@ -986,7 +1029,7 @@ impl Editor {
     }
     
     /// Handle regular mouse click - move cursor and clear selection
-    pub fn handle_regular_click(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config) {
+    pub fn handle_regular_click(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config, visible_lines: usize) {
         if let Some((line, column)) = self.mouse_to_buffer_position(mouse_x, mouse_y, config) {
             if let Some(buffer) = self.current_buffer_mut() {
                 // Clear any existing selection
@@ -995,13 +1038,13 @@ impl Editor {
                 buffer.cursor.line = line;
                 buffer.cursor.column = column;
                 buffer.cursor.preferred_visual_column = column;
-                self.adjust_viewport();
+                self.adjust_viewport(config, visible_lines);
             }
         }
     }
     
     /// Handle Shift+click - extend selection to mouse position
-    pub fn handle_shift_click(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config) {
+    pub fn handle_shift_click(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config, visible_lines: usize) {
         if let Some((line, column)) = self.mouse_to_buffer_position(mouse_x, mouse_y, config) {
             if let Some(buffer) = self.current_buffer_mut() {
                 // If no selection exists, start one from current cursor position
@@ -1012,13 +1055,13 @@ impl Editor {
                 buffer.cursor.line = line;
                 buffer.cursor.column = column;
                 buffer.cursor.preferred_visual_column = column;
-                self.adjust_viewport();
+                self.adjust_viewport(config, visible_lines);
             }
         }
     }
     
     /// Handle mouse drag - create or extend selection
-    pub fn handle_mouse_drag(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config) {
+    pub fn handle_mouse_drag(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config, visible_lines: usize) {
         if let Some((line, column)) = self.mouse_to_buffer_position(mouse_x, mouse_y, config) {
             if let Some(buffer) = self.current_buffer_mut() {
                 // If no selection exists yet, start one from the initial click position
@@ -1029,7 +1072,7 @@ impl Editor {
                 buffer.cursor.line = line;
                 buffer.cursor.column = column;
                 buffer.cursor.preferred_visual_column = column;
-                self.adjust_viewport();
+                self.adjust_viewport(config, visible_lines);
             }
         }
     }

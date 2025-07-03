@@ -11,6 +11,7 @@ pub struct Config {
     pub margins: Margins,
     pub word_wrap: bool,
     pub auto_save_delay_seconds: u64,
+    pub scrolloff: u16,
     #[serde(skip)]
     pub theme: Theme,
     #[serde(default)]
@@ -226,6 +227,7 @@ impl Default for Config {
             },
             word_wrap: false,
             auto_save_delay_seconds: 0, // 0 = disabled
+            scrolloff: 3,
             theme: Theme::default(),
             theme_name: None,
         }
