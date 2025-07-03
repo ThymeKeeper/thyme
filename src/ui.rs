@@ -109,6 +109,9 @@ impl Ui {
                 if screen_x < editor_area.x + editor_area.width && 
                    screen_y < editor_area.y + editor_area.height {
                     f.set_cursor_position((screen_x, screen_y));
+                    
+                    // Apply cursor color if supported by terminal
+                    self.set_cursor_style(config);
                 }
             }
         } else {
@@ -1193,6 +1196,61 @@ impl Ui {
         }
         
         visual_line
+    }
+    
+    /// Set cursor style based on theme configuration
+    fn set_cursor_style(&self, config: &Config) {
+        use crossterm::cursor::SetCursorStyle;
+        use crossterm::style::SetForegroundColor;
+        use crossterm::queue;
+        use std::io::{stdout, Write};
+        
+        // Parse cursor color from theme
+        let cursor_color = &config.theme.colors.cursor;
+        
+        // Convert hex color to crossterm Color
+        if let Some(crossterm_color) = self.parse_crossterm_color(cursor_color) {
+            // Try to set cursor color using crossterm
+            // Note: Not all terminals support cursor color changes
+            let _ = queue!(
+                stdout(),
+                SetForegroundColor(crossterm_color),
+                SetCursorStyle::BlinkingBlock
+            );
+            let _ = stdout().flush();
+        }
+    }
+    
+    /// Convert hex color string to crossterm Color
+    fn parse_crossterm_color(&self, color_str: &str) -> Option<crossterm::style::Color> {
+        use crossterm::style::Color;
+        
+        // Handle hex colors
+        if let Some(hex) = color_str.strip_prefix('#') {
+            if hex.len() == 6 {
+                if let Ok(rgb) = u32::from_str_radix(hex, 16) {
+                    let r = ((rgb >> 16) & 0xFF) as u8;
+                    let g = ((rgb >> 8) & 0xFF) as u8;
+                    let b = (rgb & 0xFF) as u8;
+                    return Some(Color::Rgb { r, g, b });
+                }
+            }
+        }
+        
+        // Handle named colors
+        match color_str.to_lowercase().as_str() {
+            "black" => Some(Color::Black),
+            "red" => Some(Color::Red),
+            "green" => Some(Color::Green),
+            "yellow" => Some(Color::Yellow),
+            "blue" => Some(Color::Blue),
+            "magenta" => Some(Color::Magenta),
+            "cyan" => Some(Color::Cyan),
+            "gray" | "grey" => Some(Color::Grey),
+            "darkgray" | "darkgrey" => Some(Color::DarkGrey),
+            "white" => Some(Color::White),
+            _ => None,
+        }
     }
 }
 

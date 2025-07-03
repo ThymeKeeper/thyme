@@ -730,9 +730,19 @@ impl Editor {
     /// Initial viewport adjustment when loading a file or creating a new buffer
     /// This ensures the viewport respects scrolloff from the start
     pub fn adjust_viewport_initial(&mut self, config: &Config, visible_lines: usize) {
-        // Simply call the regular adjust_viewport method
-        // The scrolloff logic will automatically position the viewport correctly
-        self.adjust_viewport(config, visible_lines);
+        if let Some(buffer) = self.current_buffer() {
+            let scrolloff = config.scrolloff as usize;
+            
+            // For empty or very small buffers, position cursor in the top scrolloff zone
+            if buffer.rope.len_lines() <= 1 {
+                // Set viewport so cursor appears at scrolloff lines from the top
+                // This means viewport should be negative to show virtual lines above
+                self.viewport_line = -(scrolloff as isize);
+            } else {
+                // For files with content, use regular viewport adjustment
+                self.adjust_viewport(config, visible_lines);
+            }
+        }
     }
     
     fn adjust_viewport(&mut self, config: &Config, visible_lines: usize) {
@@ -749,6 +759,23 @@ impl Editor {
                 return;
             }
             
+            // For small buffers that fit entirely in viewport, prefer top positioning
+            // but establish proper scrolloff zones as the buffer grows
+            if total_file_lines <= visible_lines {
+                // Buffer fits entirely in viewport
+                if cursor_line < scrolloff {
+                    // Cursor is in top area - keep top positioning
+                    self.viewport_line = -(scrolloff as isize);
+                } else {
+                    // Cursor has moved down - establish proper bottom scrolloff
+                    // Position viewport so cursor is at bottom scrolloff boundary
+                    let desired_viewport = cursor_line as isize - (visible_lines - scrolloff - 1) as isize;
+                    self.viewport_line = desired_viewport.max(-(scrolloff as isize));
+                }
+                return;
+            }
+            
+            // For larger buffers, use full scrolloff logic
             // Calculate the scrolloff boundaries within the current viewport
             let top_boundary = self.viewport_line + scrolloff as isize;
             let bottom_boundary = self.viewport_line + (visible_lines - scrolloff - 1) as isize;
