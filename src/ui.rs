@@ -647,9 +647,13 @@ impl Ui {
     }
 
     fn draw_status_line(&self, f: &mut ratatui::Frame, area: Rect, editor: &Editor, config: &Config) {
-        let mut status_text = String::new();
+        let status_bg = config.theme.parse_color(&config.theme.colors.status_bar_bg);
+        let status_fg = config.theme.parse_color(&config.theme.colors.status_bar_fg);
 
         if let Some(buffer) = editor.current_buffer() {
+            // Left side: filename, dirty indicator, language, and mode indicators
+            let mut left_text = String::new();
+            
             // File info
             let file_name = buffer.file_path
                 .as_ref()
@@ -657,39 +661,60 @@ impl Ui {
                 .and_then(|n| n.to_str())
                 .unwrap_or("[No Name]");
             
-            status_text.push_str(&format!("{}", file_name));
+            left_text.push_str(&format!("  {}", file_name));
 
             if buffer.dirty {
-                status_text.push_str(" [+]");
+                left_text.push_str("*");
             }
 
-            // Cursor position
-            status_text.push_str(&format!(" | {}:{}", buffer.cursor.line + 1, buffer.cursor.column + 1));
-
-            // Language indicator (simple display name)
+            // Language indicator
             let display_name = Buffer::get_language_display_name(&buffer.language);
-            status_text.push_str(&format!(" | {}", display_name));
+            left_text.push_str(&format!(" | {}", display_name));
             
             // Word wrap indicator (only if enabled)
             if config.word_wrap {
-                status_text.push_str(" | WRAP");
+                left_text.push_str(" | WRAP");
             }
+            
+            // Mode indicators (only when in special modes)
+            if editor.language_selection_mode {
+                left_text.push_str(" | LANGUAGE SELECTION");
+            } else if editor.theme_selection_mode {
+                left_text.push_str(" | THEME SELECTION");
+            }
+
+            // Right side: cursor position and scroll percentage
+            let scroll_percentage = self.calculate_scroll_percentage(buffer, editor, config);
+            let right_text = format!("{}:{} | {}%  ", 
+                buffer.cursor.line + 1, 
+                buffer.cursor.column + 1, 
+                scroll_percentage
+            );
+
+            // Create layout for left and right alignment
+            let chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Min(0), Constraint::Length(right_text.len() as u16)])
+                .split(area);
+
+            // Left-aligned content
+            let left_status = Paragraph::new(left_text)
+                .style(Style::default().bg(status_bg).fg(status_fg))
+                .alignment(Alignment::Left);
+            f.render_widget(left_status, chunks[0]);
+
+            // Right-aligned content
+            let right_status = Paragraph::new(right_text)
+                .style(Style::default().bg(status_bg).fg(status_fg))
+                .alignment(Alignment::Right);
+            f.render_widget(right_status, chunks[1]);
+        } else {
+            // No buffer - just show a simple status
+            let status = Paragraph::new("[No Buffer]")
+                .style(Style::default().bg(status_bg).fg(status_fg))
+                .alignment(Alignment::Left);
+            f.render_widget(status, area);
         }
-
-        // Mode indicators (only when in special modes)
-        if editor.language_selection_mode {
-            status_text.push_str(" | LANGUAGE SELECTION");
-        } else if editor.theme_selection_mode {
-            status_text.push_str(" | THEME SELECTION");
-        }
-
-        let status_bg = config.theme.parse_color(&config.theme.colors.status_bar_bg);
-        let status_fg = config.theme.parse_color(&config.theme.colors.status_bar_fg);
-
-        let status = Paragraph::new(status_text)
-            .style(Style::default().bg(status_bg).fg(status_fg));
-
-        f.render_widget(status, area);
     }
 
     // Draw help modal
@@ -1062,6 +1087,112 @@ impl Ui {
             // Middle lines of selection - entire line is selected
             return true;
         }
+    }
+    
+    /// Calculate scroll percentage based on visual lines and viewport position
+    fn calculate_scroll_percentage(&self, buffer: &Buffer, _editor: &Editor, config: &Config) -> u8 {
+        let total_file_lines = buffer.rope.len_lines();
+        
+        // Handle empty file or single line
+        if total_file_lines <= 1 {
+            return 100;
+        }
+        
+        let scrolloff = config.scrolloff as usize;
+        let content_width = self.get_content_width(config);
+        
+        // Calculate total visual lines if word wrap is enabled
+        let total_visual_lines = if config.word_wrap {
+            self.calculate_total_visual_lines(buffer, content_width)
+        } else {
+            total_file_lines
+        };
+        
+        // Add virtual lines for scrolloff at start and end
+        let total_visual_lines_with_virtual = total_visual_lines + (scrolloff * 2);
+        
+        // Current cursor position in visual lines
+        let cursor_visual_line = if config.word_wrap {
+            self.calculate_cursor_visual_line(buffer, content_width)
+        } else {
+            buffer.cursor.line
+        };
+        
+        // Adjust cursor position to account for virtual lines at the start
+        let cursor_visual_line_with_virtual = cursor_visual_line + scrolloff;
+        
+        // Calculate percentage
+        if total_visual_lines_with_virtual <= 1 {
+            100
+        } else {
+            let percentage = (cursor_visual_line_with_virtual * 100) / (total_visual_lines_with_virtual - 1);
+            percentage.min(100) as u8
+        }
+    }
+    
+    /// Calculate total number of visual lines considering word wrapping
+    fn calculate_total_visual_lines(&self, buffer: &Buffer, content_width: usize) -> usize {
+        let mut total_visual_lines = 0;
+        
+        for line_idx in 0..buffer.rope.len_lines() {
+            let line_text = buffer.get_line_text(line_idx);
+            let line_text_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            let wrapped_segments = wrap_line(line_text_for_display, content_width);
+            total_visual_lines += wrapped_segments.len().max(1); // At least 1 line per logical line
+        }
+        
+        total_visual_lines
+    }
+    
+    /// Calculate which visual line the cursor is currently on
+    fn calculate_cursor_visual_line(&self, buffer: &Buffer, content_width: usize) -> usize {
+        let mut visual_line = 0;
+        
+        // Count visual lines for all logical lines before the cursor line
+        for line_idx in 0..buffer.cursor.line {
+            let line_text = buffer.get_line_text(line_idx);
+            let line_text_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            let wrapped_segments = wrap_line(line_text_for_display, content_width);
+            visual_line += wrapped_segments.len().max(1);
+        }
+        
+        // Add the segment index within the current line
+        if buffer.cursor.line < buffer.rope.len_lines() {
+            let line_text = buffer.get_line_text(buffer.cursor.line);
+            let line_text_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            let wrapped_segments = wrap_line(line_text_for_display, content_width);
+            
+            // Find which segment the cursor is in
+            for (segment_idx, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
+                let segment_end = if segment_idx + 1 < wrapped_segments.len() {
+                    wrapped_segments[segment_idx + 1].1
+                } else {
+                    line_text_for_display.chars().count()
+                };
+                
+                if buffer.cursor.column >= *start_pos && buffer.cursor.column <= segment_end {
+                    visual_line += segment_idx;
+                    break;
+                }
+            }
+        }
+        
+        visual_line
     }
 }
 
