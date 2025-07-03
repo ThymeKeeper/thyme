@@ -238,6 +238,9 @@ impl Config {
     pub fn load() -> Result<Self> {
         let config_path = Self::config_path()?;
         
+        // Ensure themes directory and default themes exist
+        Self::ensure_themes_directory()?;
+        
         if config_path.exists() {
             let content = std::fs::read_to_string(config_path)?;
             // Try to deserialize, but if it fails (e.g., due to new fields), 
@@ -353,6 +356,214 @@ impl Config {
         path.push("thyme");
         path.push("themes");
         Ok(path)
+    }
+    
+    /// Ensure themes directory exists and create default themes if it's empty
+    pub fn ensure_themes_directory() -> Result<()> {
+        let themes_dir = Self::themes_dir()?;
+        
+        // Create themes directory if it doesn't exist
+        std::fs::create_dir_all(&themes_dir)?;
+        
+        // Check if directory is empty or has no .toml files
+        let has_themes = std::fs::read_dir(&themes_dir)?
+            .any(|entry| {
+                if let Ok(entry) = entry {
+                    entry.path().extension().and_then(|s| s.to_str()) == Some("toml")
+                } else {
+                    false
+                }
+            });
+        
+        // If no themes exist, create default ones
+        if !has_themes {
+            Self::create_default_themes(&themes_dir)?;
+        }
+        
+        Ok(())
+    }
+    
+    /// Create a set of default themes
+    fn create_default_themes(themes_dir: &std::path::Path) -> Result<()> {
+        // Monokai theme
+        let monokai = Theme {
+            name: "Monokai".to_string(),
+            colors: ThemeColors {
+                background: "#272822".to_string(),
+                foreground: "#f8f8f2".to_string(),
+                cursor: "#f8f8f0".to_string(),
+                selection: "#49483e".to_string(),
+                line_number: "#75715e".to_string(),
+                current_line: "#3e3d32".to_string(),
+                
+                keyword: "#f92672".to_string(),
+                string: "#e6db74".to_string(),
+                comment: "#75715e".to_string(),
+                number: "#ae81ff".to_string(),
+                operator: "#f92672".to_string(),
+                identifier: "#a6e22e".to_string(),
+                type_: "#66d9ef".to_string(),
+                function: "#a6e22e".to_string(),
+                variable: "#f8f8f2".to_string(),
+                property: "#a6e22e".to_string(),
+                parameter: "#fd971f".to_string(),
+                constant: "#ae81ff".to_string(),
+                namespace: "#f92672".to_string(),
+                punctuation: "#f8f8f2".to_string(),
+                tag: "#f92672".to_string(),
+                attribute: "#a6e22e".to_string(),
+                normal: "#f8f8f2".to_string(),
+                
+                status_bar_bg: "#75715e".to_string(),
+                status_bar_fg: "#f8f8f2".to_string(),
+                border: "#75715e".to_string(),
+                border_active: "#f92672".to_string(),
+                modal_bg: "#3e3d32".to_string(),
+                modal_fg: "#f8f8f2".to_string(),
+                selection_bg: "#49483e".to_string(),
+                selection_fg: "#f8f8f2".to_string(),
+            },
+            styles: ThemeStyles::default(),
+        };
+        
+        // Dracula theme
+        let dracula = Theme {
+            name: "Dracula".to_string(),
+            colors: ThemeColors {
+                background: "#282a36".to_string(),
+                foreground: "#f8f8f2".to_string(),
+                cursor: "#f8f8f0".to_string(),
+                selection: "#44475a".to_string(),
+                line_number: "#6272a4".to_string(),
+                current_line: "#44475a".to_string(),
+                
+                keyword: "#ff79c6".to_string(),
+                string: "#f1fa8c".to_string(),
+                comment: "#6272a4".to_string(),
+                number: "#bd93f9".to_string(),
+                operator: "#ff79c6".to_string(),
+                identifier: "#50fa7b".to_string(),
+                type_: "#8be9fd".to_string(),
+                function: "#50fa7b".to_string(),
+                variable: "#f8f8f2".to_string(),
+                property: "#50fa7b".to_string(),
+                parameter: "#ffb86c".to_string(),
+                constant: "#bd93f9".to_string(),
+                namespace: "#ff79c6".to_string(),
+                punctuation: "#f8f8f2".to_string(),
+                tag: "#ff79c6".to_string(),
+                attribute: "#50fa7b".to_string(),
+                normal: "#f8f8f2".to_string(),
+                
+                status_bar_bg: "#6272a4".to_string(),
+                status_bar_fg: "#f8f8f2".to_string(),
+                border: "#6272a4".to_string(),
+                border_active: "#ff79c6".to_string(),
+                modal_bg: "#44475a".to_string(),
+                modal_fg: "#f8f8f2".to_string(),
+                selection_bg: "#44475a".to_string(),
+                selection_fg: "#f8f8f2".to_string(),
+            },
+            styles: ThemeStyles::default(),
+        };
+        
+        // Solarized Dark theme
+        let solarized_dark = Theme {
+            name: "Solarized Dark".to_string(),
+            colors: ThemeColors {
+                background: "#002b36".to_string(),
+                foreground: "#839496".to_string(),
+                cursor: "#93a1a1".to_string(),
+                selection: "#073642".to_string(),
+                line_number: "#586e75".to_string(),
+                current_line: "#073642".to_string(),
+                
+                keyword: "#859900".to_string(),
+                string: "#2aa198".to_string(),
+                comment: "#586e75".to_string(),
+                number: "#d33682".to_string(),
+                operator: "#859900".to_string(),
+                identifier: "#268bd2".to_string(),
+                type_: "#b58900".to_string(),
+                function: "#268bd2".to_string(),
+                variable: "#839496".to_string(),
+                property: "#268bd2".to_string(),
+                parameter: "#cb4b16".to_string(),
+                constant: "#d33682".to_string(),
+                namespace: "#6c71c4".to_string(),
+                punctuation: "#839496".to_string(),
+                tag: "#dc322f".to_string(),
+                attribute: "#268bd2".to_string(),
+                normal: "#839496".to_string(),
+                
+                status_bar_bg: "#073642".to_string(),
+                status_bar_fg: "#93a1a1".to_string(),
+                border: "#586e75".to_string(),
+                border_active: "#268bd2".to_string(),
+                modal_bg: "#073642".to_string(),
+                modal_fg: "#839496".to_string(),
+                selection_bg: "#073642".to_string(),
+                selection_fg: "#93a1a1".to_string(),
+            },
+            styles: ThemeStyles::default(),
+        };
+        
+        // Nord theme with custom dark background
+        let nord = Theme {
+            name: "Nord".to_string(),
+            colors: ThemeColors {
+                background: "#151515".to_string(), // Custom darker background
+                foreground: "#d8dee9".to_string(),
+                cursor: "#d8dee9".to_string(),
+                selection: "#434c5e".to_string(),
+                line_number: "#4c566a".to_string(),
+                current_line: "#2e3440".to_string(),
+                
+                keyword: "#81a1c1".to_string(),
+                string: "#a3be8c".to_string(),
+                comment: "#616e88".to_string(),
+                number: "#b48ead".to_string(),
+                operator: "#81a1c1".to_string(),
+                identifier: "#8fbcbb".to_string(),
+                type_: "#8fbcbb".to_string(),
+                function: "#88c0d0".to_string(),
+                variable: "#d8dee9".to_string(),
+                property: "#8fbcbb".to_string(),
+                parameter: "#d08770".to_string(),
+                constant: "#5e81ac".to_string(),
+                namespace: "#81a1c1".to_string(),
+                punctuation: "#eceff4".to_string(),
+                tag: "#81a1c1".to_string(),
+                attribute: "#8fbcbb".to_string(),
+                normal: "#d8dee9".to_string(),
+                
+                status_bar_bg: "#3b4252".to_string(),
+                status_bar_fg: "#eceff4".to_string(),
+                border: "#4c566a".to_string(),
+                border_active: "#88c0d0".to_string(),
+                modal_bg: "#2e3440".to_string(),
+                modal_fg: "#d8dee9".to_string(),
+                selection_bg: "#434c5e".to_string(),
+                selection_fg: "#eceff4".to_string(),
+            },
+            styles: ThemeStyles::default(),
+        };
+        
+        // Save the themes
+        let themes = vec![
+            ("monokai", monokai),
+            ("dracula", dracula),
+            ("solarized-dark", solarized_dark),
+            ("nord", nord),
+        ];
+        
+        for (filename, theme) in themes {
+            let theme_path = themes_dir.join(format!("{}.toml", filename));
+            let content = toml::to_string_pretty(&theme)?;
+            std::fs::write(theme_path, content)?;
+        }
+        
+        Ok(())
     }
 }
 
