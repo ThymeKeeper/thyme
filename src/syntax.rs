@@ -463,6 +463,19 @@ impl SyntaxHighlighter {
         
         while let Some((i, ch)) = chars.next() {
             if ch.is_ascii_digit() {
+                // Check if this digit is preceded by an alphanumeric character or underscore
+                // If so, it's part of an identifier, not a standalone number
+                let is_part_of_identifier = if i > 0 {
+                    let prev_char = line.chars().nth(line[..i].chars().count().saturating_sub(1));
+                    prev_char.map_or(false, |c| c.is_alphanumeric() || c == '_')
+                } else {
+                    false
+                };
+                
+                if is_part_of_identifier {
+                    continue;
+                }
+                
                 let start = i;
                 let mut end = i + ch.len_utf8();
                 let mut has_dot = false;
@@ -490,6 +503,19 @@ impl SyntaxHighlighter {
                     } else {
                         break;
                     }
+                }
+                
+                // Also check if the number is followed by an alphanumeric character or underscore
+                // If so, it's part of an identifier
+                let is_followed_by_identifier = if end < line.len() {
+                    let next_char = line.chars().nth(line[..end].chars().count());
+                    next_char.map_or(false, |c| c.is_alphabetic() || c == '_')
+                } else {
+                    false
+                };
+                
+                if is_followed_by_identifier {
+                    continue;
                 }
                 
                 // Check if this position is already covered by an existing token

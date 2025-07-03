@@ -50,8 +50,12 @@ impl App {
         // Load a file if provided as argument
         if let Some(arg) = std::env::args().nth(1) {
             self.editor.open_file(&PathBuf::from(arg)).await?;
+            // Adjust viewport to respect scrolloff setting after loading
+            self.editor.adjust_viewport_initial(&self.config, self.calculate_visible_lines());
         } else {
             self.editor.new_buffer();
+            // Adjust viewport to respect scrolloff setting for new buffer
+            self.editor.adjust_viewport_initial(&self.config, self.calculate_visible_lines());
         }
 
         while self.running {

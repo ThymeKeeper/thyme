@@ -727,6 +727,14 @@ impl Editor {
         }
     }
 
+    /// Initial viewport adjustment when loading a file or creating a new buffer
+    /// This ensures the viewport respects scrolloff from the start
+    pub fn adjust_viewport_initial(&mut self, config: &Config, visible_lines: usize) {
+        // Simply call the regular adjust_viewport method
+        // The scrolloff logic will automatically position the viewport correctly
+        self.adjust_viewport(config, visible_lines);
+    }
+    
     fn adjust_viewport(&mut self, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer() {
             let cursor_line = buffer.cursor.line;
