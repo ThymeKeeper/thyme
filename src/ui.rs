@@ -111,7 +111,7 @@ impl Ui {
                     f.set_cursor_position((screen_x, screen_y));
                     
                     // Apply cursor color if supported by terminal
-                    self.set_cursor_style(config);
+                    self.set_cursor_style(config, buffer);
                 }
             }
         } else {
@@ -1198,8 +1198,8 @@ impl Ui {
         visual_line
     }
     
-    /// Set cursor style based on theme configuration
-    fn set_cursor_style(&self, config: &Config) {
+    /// Set cursor style based on theme configuration and selection state
+    fn set_cursor_style(&self, config: &Config, buffer: &Buffer) {
         use crossterm::cursor::SetCursorStyle;
         use crossterm::style::SetForegroundColor;
         use crossterm::queue;
@@ -1210,12 +1210,19 @@ impl Ui {
         
         // Convert hex color to crossterm Color
         if let Some(crossterm_color) = self.parse_crossterm_color(cursor_color) {
-            // Try to set cursor color using crossterm
+            // Choose cursor style based on selection state
+            let cursor_style = if buffer.cursor.get_selection_range().is_some() {
+                SetCursorStyle::BlinkingUnderScore // Underscore when text is selected
+            } else {
+                SetCursorStyle::BlinkingBlock // Block when no selection
+            };
+            
+            // Try to set cursor color and style using crossterm
             // Note: Not all terminals support cursor color changes
             let _ = queue!(
                 stdout(),
                 SetForegroundColor(crossterm_color),
-                SetCursorStyle::BlinkingBlock
+                cursor_style
             );
             let _ = stdout().flush();
         }
