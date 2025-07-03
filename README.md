@@ -9,6 +9,8 @@ A terminal text editor written in Rust.
 - Auto-save (after 2 seconds of inactivity)
 - Customizable, hot-swappable color themes
 - Adjustable margins
+- Configurable scrolloff zones (keep lines visible above/below cursor)
+- Mouse support for cursor positioning and text selection
 
 ### Requirements
 
@@ -25,6 +27,9 @@ A terminal text editor written in Rust.
 - Arrow keys - Move cursor
 - `Home`/`End` - Beginning/end of line
 - `Page Up`/`Down` - Scroll
+- Mouse click - Position cursor
+- Mouse drag - Select text
+- `Shift+Click` - Extend selection
 
 ### Editing
 - `Enter` - New line
@@ -38,6 +43,30 @@ A terminal text editor written in Rust.
 - `F6` - Toggle word wrap
 - `Ctrl+L` - Change syntax highlighting language
 - `Ctrl+T` - Change color theme
+
+## Configuration
+
+Configuration file: `~/.config/thyme/config.toml`
+
+```toml
+# Word wrap setting
+word_wrap = false
+
+# Auto-save delay in seconds (0 = disabled)
+auto_save_delay_seconds = 0
+
+# Scrolloff: Number of lines to keep visible above and below cursor
+# Also adds virtual lines at the start and end of files for better scrolling
+scrolloff = 3
+
+# Visual margins
+[margins]
+vertical = 0
+horizontal = 0
+
+# Theme name (see themes section)
+theme_name = "Default Dark"
+```
 
 ## Themes
 
@@ -59,5 +88,5 @@ comment = "#6a9955"
 
 - No plugin system
 - No LSP support
-- No mouse support
+- Focused on simplicity and speed
 - Just a text editor
