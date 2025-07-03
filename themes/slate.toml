@@ -4,7 +4,7 @@ name = "Slate"
 # Editor colors
 background = "#1e293b"
 foreground = "#cbd5e1"
-cursor = "#cbd5e1"
+cursor = "#60a5fa"
 selection = "#334155"
 line_number = "#64748b"
 current_line = "#334155"

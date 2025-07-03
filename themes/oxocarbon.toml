@@ -4,7 +4,7 @@ name = "Oxocarbon"
 # Editor colors
 background = "#161616"
 foreground = "#f2f4f8"
-cursor = "#f2f4f8"
+cursor = "#78a9ff"
 selection = "#262626"
 line_number = "#6f6f6f"
 current_line = "#262626"

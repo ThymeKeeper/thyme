@@ -4,7 +4,7 @@ name = "Cobalt"
 # Editor colors
 background = "#002240"
 foreground = "#c0c5ce"
-cursor = "#c0c5ce"
+cursor = "#5bb2ed"
 selection = "#003950"
 line_number = "#5f676a"
 current_line = "#083358"

@@ -145,7 +145,7 @@ impl Default for Theme {
                 // Editor colors
                 background: "#1e1e1e".to_string(),
                 foreground: "#d4d4d4".to_string(),
-                cursor: "#ffffff".to_string(),
+                cursor: "#007acc".to_string(),
                 selection: "#264f78".to_string(),
                 line_number: "#858585".to_string(),
                 current_line: "#2a2a2a".to_string(),
@@ -391,7 +391,7 @@ impl Config {
             colors: ThemeColors {
                 background: "#272822".to_string(),
                 foreground: "#f8f8f2".to_string(),
-                cursor: "#f8f8f0".to_string(),
+                cursor: "#66d9ef".to_string(),
                 selection: "#49483e".to_string(),
                 line_number: "#75715e".to_string(),
                 current_line: "#3e3d32".to_string(),
@@ -432,7 +432,7 @@ impl Config {
             colors: ThemeColors {
                 background: "#282a36".to_string(),
                 foreground: "#f8f8f2".to_string(),
-                cursor: "#f8f8f0".to_string(),
+                cursor: "#50fa7b".to_string(),
                 selection: "#44475a".to_string(),
                 line_number: "#6272a4".to_string(),
                 current_line: "#44475a".to_string(),
@@ -473,7 +473,7 @@ impl Config {
             colors: ThemeColors {
                 background: "#002b36".to_string(),
                 foreground: "#839496".to_string(),
-                cursor: "#93a1a1".to_string(),
+                cursor: "#268bd2".to_string(),
                 selection: "#073642".to_string(),
                 line_number: "#586e75".to_string(),
                 current_line: "#073642".to_string(),
@@ -514,7 +514,7 @@ impl Config {
             colors: ThemeColors {
                 background: "#151515".to_string(), // Custom darker background
                 foreground: "#d8dee9".to_string(),
-                cursor: "#d8dee9".to_string(),
+                cursor: "#88c0d0".to_string(),
                 selection: "#434c5e".to_string(),
                 line_number: "#4c566a".to_string(),
                 current_line: "#2e3440".to_string(),

@@ -4,7 +4,7 @@ name = "Tomorrow Night"
 # Editor colors
 background = "#1d1f21"
 foreground = "#c5c8c6"
-cursor = "#c5c8c6"
+cursor = "#81a2be"
 selection = "#373b41"
 line_number = "#969896"
 current_line = "#282a2e"

@@ -1201,31 +1201,52 @@ impl Ui {
     /// Set cursor style based on theme configuration and selection state
     fn set_cursor_style(&self, config: &Config, buffer: &Buffer) {
         use crossterm::cursor::SetCursorStyle;
-        use crossterm::style::SetForegroundColor;
         use crossterm::queue;
         use std::io::{stdout, Write};
         
         // Parse cursor color from theme
         let cursor_color = &config.theme.colors.cursor;
         
-        // Convert hex color to crossterm Color
-        if let Some(crossterm_color) = self.parse_crossterm_color(cursor_color) {
-            // Choose cursor style based on selection state
-            let cursor_style = if buffer.cursor.get_selection_range().is_some() {
-                SetCursorStyle::BlinkingUnderScore // Underscore when text is selected
-            } else {
-                SetCursorStyle::BlinkingBlock // Block when no selection
-            };
+        // Choose cursor style based on selection state
+        let cursor_style = if buffer.cursor.get_selection_range().is_some() {
+            SetCursorStyle::BlinkingUnderScore // Underscore when text is selected
+        } else {
+            SetCursorStyle::BlinkingBlock // Block when no selection
+        };
+        
+        // Set cursor style first
+        let _ = queue!(stdout(), cursor_style);
+        
+        // Try to set cursor color using multiple approaches for better compatibility
+        if cursor_color.starts_with('#') && cursor_color.len() == 7 {
+            // Method 1: OSC 12 sequence (most widely supported)
+            // Format: ESC ] 12 ; color BEL
+            let osc12_sequence = format!("\x1b]12;{}\x07", cursor_color);
+            let _ = queue!(stdout(), crossterm::style::Print(osc12_sequence));
             
-            // Try to set cursor color and style using crossterm
-            // Note: Not all terminals support cursor color changes
-            let _ = queue!(
-                stdout(),
-                SetForegroundColor(crossterm_color),
-                cursor_style
-            );
-            let _ = stdout().flush();
+            // Method 2: Alternative OSC 12 with ST terminator (for some terminals)
+            // Format: ESC ] 12 ; color ESC \
+            let osc12_st_sequence = format!("\x1b]12;{}\x1b\\", cursor_color);
+            let _ = queue!(stdout(), crossterm::style::Print(osc12_st_sequence));
+            
+            // Method 3: Try DECSCUSR with color (for terminals that support it)
+            // This is less standard but some terminals support it
+            if let Some(hex) = cursor_color.strip_prefix('#') {
+                if hex.len() == 6 {
+                    // Some terminals support color in DECSCUSR sequences
+                    let decscusr_color = format!("\x1b[{} q\x1b]12;{}\x07", 
+                        if buffer.cursor.get_selection_range().is_some() { "4" } else { "2" }, 
+                        cursor_color
+                    );
+                    let _ = queue!(stdout(), crossterm::style::Print(decscusr_color));
+                }
+            }
+        } else {
+            // Fallback for non-hex colors or invalid format
+            // Just set the cursor style without attempting color change
         }
+        
+        let _ = stdout().flush();
     }
     
     /// Convert hex color string to crossterm Color

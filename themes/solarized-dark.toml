@@ -4,7 +4,7 @@ name = "Solarized Dark"
 # Editor colors
 background = "#002b36"
 foreground = "#839496"
-cursor = "#839496"
+cursor = "#268bd2"
 selection = "#073642"
 line_number = "#586e75"
 current_line = "#073642"

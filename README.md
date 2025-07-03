@@ -5,12 +5,12 @@ A terminal text editor written in Rust.
 ## Features
 
 - Syntax highlighting for 35+ languages
-- Word wrapping with proper cursor navigation
-- Auto-save (after 2 seconds of inactivity)
+- Optional word wrapping with proper cursor navigation
+- Optiona auto-save
 - Customizable, hot-swappable color themes
 - Adjustable margins
-- Configurable scrolloff zones (keep lines visible above/below cursor)
-- Mouse support for cursor positioning and text selection
+- Configurable scrolloff zones (keep lines visible above/below caret). this can be used to keep caret centered if desired.
+- Mouse support
 
 ### Requirements
 

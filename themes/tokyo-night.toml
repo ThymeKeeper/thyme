@@ -4,7 +4,7 @@ name = "Tokyo Night"
 # Editor colors
 background = "#1a1b26"
 foreground = "#c0caf5"
-cursor = "#c0caf5"
+cursor = "#7aa2f7"
 selection = "#283457"
 line_number = "#565f89"
 current_line = "#24283b"

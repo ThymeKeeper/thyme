@@ -4,7 +4,7 @@ name = "Ayu Dark"
 # Editor colors
 background = "#0a0e14"
 foreground = "#b3b1ad"
-cursor = "#b3b1ad"
+cursor = "#39bae6"
 selection = "#253340"
 line_number = "#4d5566"
 current_line = "#131721"

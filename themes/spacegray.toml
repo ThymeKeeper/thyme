@@ -4,7 +4,7 @@ name = "Spacegray"
 # Editor colors
 background = "#2c2d30"
 foreground = "#b7b8b9"
-cursor = "#b7b8b9"
+cursor = "#79c0ff"
 selection = "#4e5a65"
 line_number = "#65737e"
 current_line = "#343741"

@@ -4,7 +4,7 @@ name = "Gruvbox Dark"
 # Editor colors
 background = "#282828"
 foreground = "#ebdbb2"
-cursor = "#ebdbb2"
+cursor = "#fe8019"
 selection = "#3c3836"
 line_number = "#7c6f64"
 current_line = "#3c3836"

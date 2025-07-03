@@ -2,9 +2,9 @@ name = "Nord"
 
 [colors]
 # Editor colors
-background = "#2e3440"
+background = "#151515"
 foreground = "#d8dee9"
-cursor = "#d8dee9"
+cursor = "#88c0d0"
 selection = "#434c5e"
 line_number = "#4c566a"
 current_line = "#3b4252"

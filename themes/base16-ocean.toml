@@ -4,7 +4,7 @@ name = "Base16 Ocean"
 # Editor colors
 background = "#2b303b"
 foreground = "#c0c5ce"
-cursor = "#c0c5ce"
+cursor = "#8fa1b3"
 selection = "#4f5b66"
 line_number = "#65737e"
 current_line = "#343d46"
