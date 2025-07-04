@@ -693,6 +693,76 @@ impl SyntaxHighlighter {
                         });
                         i = j;
                     }
+                    // Check for Markdown bold/italic
+                    else if (ch == '*' || ch == '_') && self.language == "markdown" {
+                        let marker = ch;
+                        let start = i;
+                        
+                        // Check for bold (** or __)
+                        if i + 1 < chars.len() && chars[i + 1] == marker {
+                            // Bold marker
+                            let mut j = i + 2;
+                            let mut found_closing = false;
+                            
+                            // Find the closing bold marker
+                            while j + 1 < chars.len() {
+                                if chars[j] == marker && chars[j + 1] == marker {
+                                    found_closing = true;
+                                    j += 2;
+                                    break;
+                                }
+                                j += 1;
+                            }
+                            
+                            if found_closing {
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::Keyword, // Bold uses keyword color
+                                    start,
+                                    end: j,
+                                });
+                                i = j;
+                            } else {
+                                // No closing marker, treat as normal punctuation
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::Punctuation,
+                                    start: i,
+                                    end: i + 1,
+                                });
+                                i += 1;
+                            }
+                        } else {
+                            // Single marker (italic)
+                            let mut j = i + 1;
+                            let mut found_closing = false;
+                            
+                            // Find the closing italic marker
+                            while j < chars.len() && chars[j] != '\n' {
+                                if chars[j] == marker && (j + 1 >= chars.len() || chars[j + 1] != marker) {
+                                    found_closing = true;
+                                    j += 1;
+                                    break;
+                                }
+                                j += 1;
+                            }
+                            
+                            if found_closing {
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::Type, // Italic uses type color
+                                    start,
+                                    end: j,
+                                });
+                                i = j;
+                            } else {
+                                // No closing marker
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::Punctuation,
+                                    start: i,
+                                    end: i + 1,
+                                });
+                                i += 1;
+                            }
+                        }
+                    }
                     // Check for Markdown code blocks and inline code
                     else if ch == '`' && self.language == "markdown" {
                         let code_start = i;
@@ -779,7 +849,7 @@ impl SyntaxHighlighter {
                             i += 1;
                         }
                     }
-                    // Check for Markdown headers (# Header)
+                    // Check for Markdown headers (# Header) - must be at line start
                     else if ch == '#' && self.language == "markdown" && 
                             (i == 0 || (i > 0 && chars[i-1] == '\n')) {
                         // Count the number of # characters
@@ -802,6 +872,90 @@ impl SyntaxHighlighter {
                             i = j;
                         } else {
                             // Not a valid header, treat as punctuation
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Punctuation,
+                                start: i,
+                                end: i + 1,
+                            });
+                            i += 1;
+                        }
+                    }
+                    // Check for Markdown unordered list markers (*, -, +) at line start or after whitespace
+                    else if (ch == '*' || ch == '-' || ch == '+') && self.language == "markdown" &&
+                           (i == 0 || (i > 0 && chars[i-1].is_whitespace())) &&
+                           i + 1 < chars.len() && chars[i + 1] == ' ' {
+                        tokens.push(SyntaxToken {
+                            token_type: TokenType::Operator, // List markers use operator color
+                            start: i,
+                            end: i + 1,
+                        });
+                        i += 1;
+                    }
+                    // Check for Markdown ordered list markers (1. 2. etc.) at line start
+                    else if ch.is_ascii_digit() && self.language == "markdown" &&
+                            (i == 0 || (i > 0 && chars[i-1] == '\n')) {
+                        let list_start = i;
+                        let mut j = i;
+                        while j < chars.len() && chars[j].is_ascii_digit() {
+                            j += 1;
+                        }
+                        if j < chars.len() && chars[j] == '.' && 
+                           j + 1 < chars.len() && chars[j + 1] == ' ' {
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Operator, // List markers use operator color
+                                start: list_start,
+                                end: j + 1,
+                            });
+                            i = j + 1;
+                        } else {
+                            // Not a list marker, process as number
+                            let (token, new_i) = self.scan_number(&chars, i);
+                            tokens.push(token);
+                            i = new_i;
+                        }
+                    }
+                    // Check for Markdown links [text](url)
+                    else if ch == '[' && self.language == "markdown" {
+                        let link_start = i;
+                        let mut j = i + 1;
+                        let mut found_closing = false;
+                        
+                        // Find the closing ]
+                        while j < chars.len() && chars[j] != '\n' {
+                            if chars[j] == ']' {
+                                found_closing = true;
+                                j += 1;
+                                break;
+                            }
+                            j += 1;
+                        }
+                        
+                        if found_closing && j < chars.len() && chars[j] == '(' {
+                            // This is a link
+                            j += 1;
+                            // Find the closing )
+                            while j < chars.len() && chars[j] != '\n' && chars[j] != ')' {
+                                j += 1;
+                            }
+                            if j < chars.len() && chars[j] == ')' {
+                                j += 1;
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::String, // Links use string color
+                                    start: link_start,
+                                    end: j,
+                                });
+                                i = j;
+                            } else {
+                                // Unclosed link
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::Punctuation,
+                                    start: i,
+                                    end: i + 1,
+                                });
+                                i += 1;
+                            }
+                        } else {
+                            // Just a bracket
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::Punctuation,
                                 start: i,
@@ -863,14 +1017,13 @@ impl SyntaxHighlighter {
                     else if ch == '/' && i + 1 < chars.len() {
                         if chars[i + 1] == '/' && (self.language == "rust" || self.language == "javascript" || 
                                                    self.language == "typescript" || self.language == "c" || 
-                                                   self.language == "cpp") {
+                                                   self.language == "cpp" || self.language == "css") {
                             state = ScanState::InSingleLineComment;
                             current_token_start = i;
                             i += 2;
                         } else if chars[i + 1] == '*' && (self.language == "rust" || self.language == "javascript" || 
-                                                          self.language == "typescript" || self.language == "c" || 
-                                                          self.language == "cpp" || self.language == "css" || 
-                                                          self.language == "sql") {
+                                                   self.language == "typescript" || self.language == "c" || 
+                                                   self.language == "cpp" || self.language == "css" || self.language == "sql") {
                             state = ScanState::InMultiLineComment { depth: 1 };
                             current_token_start = i;
                             i += 2;
@@ -913,7 +1066,8 @@ impl SyntaxHighlighter {
                             end: i,
                         });
                     }
-                    else if ch == '#' && self.language == "python" {
+                    else if ch == '#' && (self.language == "python" || self.language == "toml" || 
+                                          self.language == "bash" || self.language == "yaml") {
                         state = ScanState::InSingleLineComment;
                         current_token_start = i;
                         i += 1;
@@ -989,6 +1143,119 @@ impl SyntaxHighlighter {
                         let (token, new_i) = self.scan_number(&chars, i);
                         tokens.push(token);
                         i = new_i;
+                    }
+                    // Check for YAML anchors (&anchor)
+                    else if ch == '&' && self.language == "yaml" && 
+                            i + 1 < chars.len() && (chars[i + 1].is_alphabetic() || chars[i + 1] == '_') {
+                        let anchor_start = i;
+                        let mut j = i + 1;
+                        while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '-') {
+                            j += 1;
+                        }
+                        tokens.push(SyntaxToken {
+                            token_type: TokenType::Type, // Anchors use type color
+                            start: anchor_start,
+                            end: j,
+                        });
+                        i = j;
+                    }
+                    // Check for YAML aliases (*alias)
+                    else if ch == '*' && self.language == "yaml" && 
+                            i + 1 < chars.len() && (chars[i + 1].is_alphabetic() || chars[i + 1] == '_') {
+                        let alias_start = i;
+                        let mut j = i + 1;
+                        while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '-') {
+                            j += 1;
+                        }
+                        tokens.push(SyntaxToken {
+                            token_type: TokenType::Type, // Aliases use type color
+                            start: alias_start,
+                            end: j,
+                        });
+                        i = j;
+                    }
+                    // Check for YAML tags (!tag)
+                    else if ch == '!' && self.language == "yaml" {
+                        let tag_start = i;
+                        let mut j = i + 1;
+                        // Skip the second ! for !!tags
+                        if j < chars.len() && chars[j] == '!' {
+                            j += 1;
+                        }
+                        // Read the tag name
+                        while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '-' || chars[j] == ':') {
+                            j += 1;
+                        }
+                        if j > tag_start + 1 {
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Attribute, // Tags use attribute color
+                                start: tag_start,
+                                end: j,
+                            });
+                            i = j;
+                        } else {
+                            // Just a single ! punctuation
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Punctuation,
+                                start: i,
+                                end: i + 1,
+                            });
+                            i += 1;
+                        }
+                    }
+                    // Check for YAML multi-line strings (| and >)
+                    else if (ch == '|' || ch == '>') && self.language == "yaml" {
+                        // Check if this is at the start of a value (after colon and whitespace)
+                        let mut is_multiline_indicator = false;
+                        let mut j = i - 1;
+                        
+                        // Look back for a colon
+                        while j > 0 && chars[j].is_whitespace() && chars[j] != '\n' {
+                            j -= 1;
+                        }
+                        
+                        if j >= 0 && chars[j] == ':' {
+                            is_multiline_indicator = true;
+                        }
+                        
+                        if is_multiline_indicator {
+                            // This is a multi-line string indicator
+                            let indicator_start = i;
+                            let mut k = i + 1;
+                            
+                            // Skip optional chomping indicators (+, -)
+                            if k < chars.len() && (chars[k] == '+' || chars[k] == '-') {
+                                k += 1;
+                            }
+                            
+                            // Skip optional indentation indicator (digit)
+                            if k < chars.len() && chars[k].is_ascii_digit() {
+                                k += 1;
+                            }
+                            
+                            // Alternatively, indentation indicator can come before chomping
+                            if i + 1 < chars.len() && chars[i + 1].is_ascii_digit() {
+                                k = i + 2;
+                                if k < chars.len() && (chars[k] == '+' || chars[k] == '-') {
+                                    k += 1;
+                                }
+                            }
+                            
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Operator, // Multi-line indicators use operator color
+                                start: indicator_start,
+                                end: k,
+                            });
+                            
+                            // The actual multi-line string content will be on subsequent lines
+                            // and will be handled as normal text
+                            i = k;
+                        } else {
+                            // Regular pipe operator
+                            let (token, new_i) = self.scan_operator(&chars, i);
+                            tokens.push(token);
+                            i = new_i;
+                        }
                     }
                     // Check for YAML keys (text before colon)
                     else if self.language == "yaml" && ch.is_alphabetic() {

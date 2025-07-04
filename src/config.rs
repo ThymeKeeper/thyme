@@ -178,43 +178,43 @@ impl Default for Theme {
         Self {
             name: "Default Dark".to_string(),
             colors: ThemeColors {
-                // Editor colors
-                background: "#1e1e1e".to_string(),
-                foreground: "#d4d4d4".to_string(),
-                cursor: "#007acc".to_string(),
-                selection: "#264f78".to_string(),
-                line_number: "#858585".to_string(),
-                current_line: "#2a2a2a".to_string(),
+                // Editor colors - muted dark background
+                background: "#1a1a1a".to_string(),      // Slightly darker background
+                foreground: "#b0b0b0".to_string(),      // More muted foreground
+                cursor: "#5a7a8a".to_string(),          // Muted blue-gray cursor
+                selection: "#2a3a4a".to_string(),       // Muted selection
+                line_number: "#606060".to_string(),     // Muted line numbers
+                current_line: "#242424".to_string(),    // Subtle current line
                 
-                // Syntax colors
-                keyword: "#569cd6".to_string(),
-                string: "#ce9178".to_string(),
-                comment: "#6a9955".to_string(),
-                number: "#b5cea8".to_string(),
-                operator: "#d4d4d4".to_string(),
-                identifier: "#9cdcfe".to_string(),
-                type_: "#4ec9b0".to_string(),
-                function: "#dcdcaa".to_string(),
-                variable: "#9cdcfe".to_string(),
-                property: "#9cdcfe".to_string(),
-                parameter: "#9cdcfe".to_string(),
-                constant: "#d16969".to_string(),
-                namespace: "#c586c0".to_string(),
-                punctuation: "#d4d4d4".to_string(),
-                tag: "#569cd6".to_string(),
-                attribute: "#9cdcfe".to_string(),
-                normal: "#d4d4d4".to_string(),
+                // Syntax colors - all muted down
+                keyword: "#7a8fa6".to_string(),         // Muted blue
+                string: "#9a8074".to_string(),          // Muted orange-brown
+                comment: "#5a6a5a".to_string(),         // Muted green-gray
+                number: "#8a9a8a".to_string(),          // Muted light green
+                operator: "#909090".to_string(),        // Muted gray
+                identifier: "#8a9aaa".to_string(),      // Muted light blue
+                type_: "#6a9a8a".to_string(),           // Muted teal
+                function: "#a0a080".to_string(),        // Muted yellow-gray
+                variable: "#8a9aaa".to_string(),        // Same as identifier
+                property: "#8a9aaa".to_string(),        // Same as identifier
+                parameter: "#8a9aaa".to_string(),       // Same as identifier
+                constant: "#9a7a7a".to_string(),        // Muted red
+                namespace: "#8a7a9a".to_string(),       // Muted purple
+                punctuation: "#808080".to_string(),     // Muted gray
+                tag: "#7a8fa6".to_string(),             // Same as keyword
+                attribute: "#8a9aaa".to_string(),       // Same as identifier
+                normal: "#b0b0b0".to_string(),          // Same as foreground
                 
-                // UI colors
-                status_bar_bg: "#007acc".to_string(),
-                status_bar_fg: "#ffffff".to_string(),
-                border: "#3e3e3e".to_string(),
-                border_active: "#007acc".to_string(),
-                modal_bg: "#252526".to_string(),
-                modal_fg: "#cccccc".to_string(),
-                selection_bg: "#007acc".to_string(),
-                selection_fg: "#ffffff".to_string(),
-                virtual_line: "#3e3e3e".to_string(), // Darker gray for virtual lines
+                // UI colors - muted versions
+                status_bar_bg: "#3a4a5a".to_string(),   // Muted blue-gray
+                status_bar_fg: "#d0d0d0".to_string(),   // Muted white
+                border: "#353535".to_string(),          // Muted border
+                border_active: "#5a7a8a".to_string(),   // Muted active border
+                modal_bg: "#202020".to_string(),        // Muted modal background
+                modal_fg: "#a0a0a0".to_string(),        // Muted modal text
+                selection_bg: "#4a5a6a".to_string(),    // Muted selection in UI
+                selection_fg: "#d0d0d0".to_string(),    // Muted white
+                virtual_line: "#2a2a2a".to_string(),    // Very subtle virtual lines
             },
             styles: ThemeStyles::default(),
         }
