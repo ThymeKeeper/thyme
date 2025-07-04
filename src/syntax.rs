@@ -679,19 +679,30 @@ impl SyntaxHighlighter {
                         }
                     }
                     // Check for Rust lifetime parameters ('a, 'static, etc.)
-                    else if ch == '\'' && i + 1 < chars.len() && chars[i + 1].is_alphabetic() && self.language == "rust" {
-                        // This is likely a lifetime parameter, not a string
-                        let lifetime_start = i;
-                        let mut j = i + 1;
-                        while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
-                            j += 1;
+                    else if ch == '\'' && i + 1 < chars.len() && self.language == "rust" {
+                        let next_char = chars[i + 1];
+                        // Check if this is a character literal
+                        if (chars.len() > i + 2) &&
+                           ((next_char.is_ascii_alphabetic() && chars[i + 2] == '\'') ||    // Single char
+                            (next_char == '\\' && chars.len() > i + 3 && chars[i + 3] == '\'')) {  // Escape sequence
+                            // This is a character literal, not a lifetime
+                            state = ScanState::InString { quote: ch, escaped: false };
+                            current_token_start = i;
+                            i += 1;
+                        } else if next_char.is_alphabetic() {
+                            // This is likely a lifetime parameter, not a string
+                            let lifetime_start = i;
+                            let mut j = i + 1;
+                            while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
+                                j += 1;
+                            }
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Type, // Lifetimes use type color
+                                start: lifetime_start,
+                                end: j,
+                            });
+                            i = j;
                         }
-                        tokens.push(SyntaxToken {
-                            token_type: TokenType::Type, // Lifetimes use type color
-                            start: lifetime_start,
-                            end: j,
-                        });
-                        i = j;
                     }
                     // Check for Markdown bold/italic
                     else if (ch == '*' || ch == '_') && self.language == "markdown" {
@@ -1125,19 +1136,6 @@ impl SyntaxHighlighter {
                             end: j,
                         });
                         i = j;
-                    }
-                    // Check for Rust lifetime parameters ('a, 'static, etc.)
-                    else if ch == '\'' && i + 1 < chars.len() && chars[i + 1].is_alphabetic() && self.language == "rust" {
-                        let lifetime_start = i;
-                        i += 1; // Skip the '
-                        while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
-                            i += 1;
-                        }
-                        tokens.push(SyntaxToken {
-                            token_type: TokenType::Attribute, // Lifetimes often use attribute color
-                            start: lifetime_start,
-                            end: i,
-                        });
                     }
                     else if ch.is_ascii_digit() {
                         let (token, new_i) = self.scan_number(&chars, i);
