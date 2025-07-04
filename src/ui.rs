@@ -729,7 +729,19 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
     ) -> Line<'static> {
         let text_chars: Vec<char> = text.chars().collect();
         let text_len = text_chars.len();
-        let segment_end = segment_start + text_len;
+        
+        // Calculate indentation offset for continuation lines
+        // If segment_start > 0, this is a continuation line with added indentation
+        let indent_offset = if segment_start > 0 {
+            // Count leading spaces/tabs in the displayed text
+            text_chars.iter().take_while(|&&c| c == ' ' || c == '\t').count()
+        } else {
+            0
+        };
+        
+        // The actual content length in the original text (without added indentation)
+        let original_content_len = text_len - indent_offset;
+        let segment_end = segment_start + original_content_len;
         
         // Get selection range if any
         let selection_range = buffer.cursor.get_selection_range();
@@ -745,6 +757,14 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         if let Some(tokens) = buffer.syntax_highlighter.get_line_tokens(line_idx) {
             let mut spans = Vec::new();
             let mut last_end = 0;
+            
+            // If this is a continuation line with indentation, add the indentation as unstyled text first
+            if indent_offset > 0 {
+                let indent_text: String = text_chars[0..indent_offset].iter().collect();
+                let normal_color = config.theme.parse_color(&config.theme.colors.normal);
+                spans.push(Span::styled(indent_text, Style::default().fg(normal_color)));
+                last_end = indent_offset;
+            }
 
             // Sort tokens by start position to ensure proper rendering order
             let mut sorted_tokens = tokens.clone();
@@ -758,13 +778,13 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
 
                 // Adjust token positions relative to this segment
                 let token_start_in_segment = if token.start >= segment_start {
-                    token.start - segment_start
+                    token.start - segment_start + indent_offset
                 } else {
-                    0
+                    indent_offset
                 };
                 
                 let token_end_in_segment = if token.end <= segment_end {
-                    token.end - segment_start
+                    token.end - segment_start + indent_offset
                 } else {
                     text_len
                 };
@@ -1061,7 +1081,18 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
     ) -> Line<'static> {
         let text_chars: Vec<char> = text.chars().collect();
         let text_len = text_chars.len();
-        let segment_end = segment_start + text_len;
+        
+        // Calculate indentation offset for continuation lines
+        let indent_offset = if segment_start > 0 {
+            // Count leading spaces/tabs in the displayed text
+            text_chars.iter().take_while(|&&c| c == ' ' || c == '\t').count()
+        } else {
+            0
+        };
+        
+        // The actual content length in the original text (without added indentation)
+        let original_content_len = text_len - indent_offset;
+        let segment_end = segment_start + original_content_len;
         
         let mut spans = Vec::new();
         
@@ -1082,20 +1113,25 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         // Create a list of all boundaries (selection + token boundaries)
         let mut all_boundaries = Vec::new();
         
-        // Add selection boundaries
+        // Add indentation offset as first boundary if present
+        if indent_offset > 0 {
+            all_boundaries.push(indent_offset);
+        }
+        
+        // Add selection boundaries (adjusted for display)
         for boundary in selection_boundaries {
             if boundary >= segment_start && boundary <= segment_end {
-                all_boundaries.push(boundary - segment_start);
+                all_boundaries.push(boundary - segment_start + indent_offset);
             }
         }
         
-        // Add token boundaries
+        // Add token boundaries (adjusted for display)
         for token in &tokens {
             if token.start >= segment_start && token.start <= segment_end {
-                all_boundaries.push(token.start - segment_start);
+                all_boundaries.push(token.start - segment_start + indent_offset);
             }
             if token.end >= segment_start && token.end <= segment_end {
-                all_boundaries.push(token.end - segment_start);
+                all_boundaries.push(token.end - segment_start + indent_offset);
             }
         }
         
@@ -1121,14 +1157,26 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
                 let segment_text: String = text_chars[start..actual_end].iter().collect();
                 
                 // Determine if this segment is selected
+                // Map display positions back to original text positions
+                let original_start = if start >= indent_offset {
+                    segment_start + start - indent_offset
+                } else {
+                    segment_start
+                };
+                let original_end = if end > indent_offset {
+                    segment_start + end - indent_offset
+                } else {
+                    segment_start
+                };
+                
                 let is_selected = self.is_segment_selected(
-                    line_idx, segment_start + start, segment_start + actual_end,
+                    line_idx, original_start, original_end,
                     sel_start, sel_end
                 );
                 
                 // Find the appropriate token style for this segment
                 let style = self.get_segment_style(
-                    &tokens, segment_start + start, segment_start + actual_end,
+                    &tokens, original_start, original_end,
                     is_selected, config
                 );
                 
