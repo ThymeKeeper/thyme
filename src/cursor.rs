@@ -113,6 +113,18 @@ impl CursorMovement {
         
         let wrapped_segments = wrap_line(line_text_for_display, content_width);
         
+        // Check if cursor is beyond the end of the line
+        if cursor.column >= line_text_for_display.chars().count() {
+            // Cursor is at or beyond EOL - use the last segment
+            if let Some((_, last_start)) = wrapped_segments.last() {
+                cursor.preferred_visual_column = cursor.column - last_start;
+            } else {
+                // Empty line
+                cursor.preferred_visual_column = cursor.column;
+            }
+            return;
+        }
+        
         // Find which visual line segment the cursor is in
         for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
             let segment_end = if i + 1 < wrapped_segments.len() {
@@ -160,25 +172,37 @@ impl CursorMovement {
         
         // Find which visual line segment we're currently in
         let mut current_segment_idx = None;
-        for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
-            let segment_end = if i + 1 < wrapped_segments.len() {
-                wrapped_segments[i + 1].1 // Next segment's start position
+        
+        // Check if cursor is beyond the end of the line
+        if cursor.column >= line_text_for_display.chars().count() {
+            // Cursor is at or beyond EOL - it belongs to the last segment
+            if !wrapped_segments.is_empty() {
+                current_segment_idx = Some(wrapped_segments.len() - 1);
             } else {
-                line_text_for_display.chars().count() // End of line
-            };
-            
-            // Fix boundary detection: use < for segment boundaries, <= only for the last segment
-            let is_in_segment = if i == wrapped_segments.len() - 1 {
-                // Last segment: include the end position
-                cursor.column >= *start_pos && cursor.column <= segment_end
-            } else {
-                // Other segments: exclude the end position (it belongs to next segment)
-                cursor.column >= *start_pos && cursor.column < segment_end
-            };
-            
-            if is_in_segment {
-                current_segment_idx = Some(i);
-                break;
+                current_segment_idx = Some(0);
+            }
+        } else {
+            // Normal case - find which segment contains the cursor
+            for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
+                let segment_end = if i + 1 < wrapped_segments.len() {
+                    wrapped_segments[i + 1].1 // Next segment's start position
+                } else {
+                    line_text_for_display.chars().count() // End of line
+                };
+                
+                // Fix boundary detection: use < for segment boundaries, <= only for the last segment
+                let is_in_segment = if i == wrapped_segments.len() - 1 {
+                    // Last segment: include the end position
+                    cursor.column >= *start_pos && cursor.column <= segment_end
+                } else {
+                    // Other segments: exclude the end position (it belongs to next segment)
+                    cursor.column >= *start_pos && cursor.column < segment_end
+                };
+                
+                if is_in_segment {
+                    current_segment_idx = Some(i);
+                    break;
+                }
             }
         }
         
@@ -253,25 +277,36 @@ impl CursorMovement {
         // Find which visual line segment we're currently in
         let mut current_segment_idx = None;
         
-        for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
-            let segment_end = if i + 1 < wrapped_segments.len() {
-                wrapped_segments[i + 1].1
+        // Check if cursor is beyond the end of the line
+        if cursor.column >= line_text_for_display.chars().count() {
+            // Cursor is at or beyond EOL - it belongs to the last segment
+            if !wrapped_segments.is_empty() {
+                current_segment_idx = Some(wrapped_segments.len() - 1);
             } else {
-                line_text_for_display.chars().count()
-            };
-            
-            // Use consistent boundary detection logic
-            let is_in_segment = if i == wrapped_segments.len() - 1 {
-                // Last segment: include the end position
-                cursor.column >= *start_pos && cursor.column <= segment_end
-            } else {
-                // Other segments: exclude the end position (it belongs to next segment)
-                cursor.column >= *start_pos && cursor.column < segment_end
-            };
-            
-            if is_in_segment {
-                current_segment_idx = Some(i);
-                break;
+                current_segment_idx = Some(0);
+            }
+        } else {
+            // Normal case - find which segment contains the cursor
+            for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
+                let segment_end = if i + 1 < wrapped_segments.len() {
+                    wrapped_segments[i + 1].1
+                } else {
+                    line_text_for_display.chars().count()
+                };
+                
+                // Use consistent boundary detection logic
+                let is_in_segment = if i == wrapped_segments.len() - 1 {
+                    // Last segment: include the end position
+                    cursor.column >= *start_pos && cursor.column <= segment_end
+                } else {
+                    // Other segments: exclude the end position (it belongs to next segment)
+                    cursor.column >= *start_pos && cursor.column < segment_end
+                };
+                
+                if is_in_segment {
+                    current_segment_idx = Some(i);
+                    break;
+                }
             }
         }
         

@@ -464,6 +464,33 @@ impl App {
             return Ok(true);
         }
 
+        // Bullet journal hotkeys
+        if key == keybindings.bullet_todo {
+            self.editor.insert_char('□', self.calculate_content_width());
+            return Ok(true);
+        }
+
+        if key == keybindings.bullet_in_progress {
+            self.editor.insert_char('◪', self.calculate_content_width());
+            return Ok(true);
+        }
+
+        if key == keybindings.bullet_done {
+            self.editor.insert_char('■', self.calculate_content_width());
+            return Ok(true);
+        }
+
+        // Paragraph navigation
+        if key == keybindings.paragraph_up {
+            self.editor.move_to_paragraph_up(&self.config, self.calculate_visible_lines());
+            return Ok(true);
+        }
+
+        if key == keybindings.paragraph_down {
+            self.editor.move_to_paragraph_down(&self.config, self.calculate_visible_lines());
+            return Ok(true);
+        }
+
         Ok(false)
     }
 

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 pub struct Editor {
     pub buffers: Vec<Buffer>,
     pub active_buffer: usize,
-    pub viewport_line: isize,
+    pub viewport_line: isize,  // In word-wrap mode, this represents the first VISUAL line in viewport
     pub horizontal_offset: usize,
     // Language selection mode
     pub language_selection_mode: bool,
@@ -267,55 +267,58 @@ impl Editor {
     }
 
     // Cursor movement methods with word-wrap support
-    pub fn update_preferred_visual_column_with_width(&mut self, content_width: usize) {
-        // Extract needed data first to avoid borrowing conflicts
-        let (line_text, cursor_column) = if let Some(buffer) = self.current_buffer() {
-            (buffer.get_line_text(buffer.cursor.line), buffer.cursor.column)
-        } else {
-            return;
-        };
-        
-        let line_text_for_display = if line_text.ends_with('\n') {
-            &line_text[..line_text.len()-1]
-        } else {
-            &line_text
-        };
-        
-        let wrapped_segments = wrap_line(line_text_for_display, content_width);
-        
-        // Find which visual line segment the cursor is in
-        for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
-            let segment_end = if i + 1 < wrapped_segments.len() {
-                wrapped_segments[i + 1].1
-            } else {
-                line_text_for_display.chars().count()
-            };
-            
-            // FIXED: Use consistent boundary detection logic
-            let is_in_segment = if i == wrapped_segments.len() - 1 {
-                // Last segment: include the end position
-                cursor_column >= *start_pos && cursor_column <= segment_end
-            } else {
-                // Other segments: exclude the end position (it belongs to next segment)
-                cursor_column >= *start_pos && cursor_column < segment_end
-            };
-            
-            if is_in_segment {
-                // Calculate position within this visual line segment
-                let visual_column = cursor_column - start_pos;
-                // Now update the buffer
-                if let Some(buffer) = self.current_buffer_mut() {
-                    buffer.cursor.preferred_visual_column = visual_column;
-                }
-                return;
-            }
-        }
-        
-        // Fallback: use the logical column as visual column
-        if let Some(buffer) = self.current_buffer_mut() {
-            buffer.cursor.preferred_visual_column = cursor_column;
-        }
-    }
+	pub fn update_preferred_visual_column_with_width(&mut self, content_width: usize) {
+	    let (line_text, cursor_column) = if let Some(buffer) = self.current_buffer() {
+	        (buffer.get_line_text(buffer.cursor.line), buffer.cursor.column)
+	    } else {
+	        return;
+	    };
+	    
+	    let line_text_for_display = if line_text.ends_with('\n') {
+	        &line_text[..line_text.len()-1]
+	    } else {
+	        &line_text
+	    };
+	    
+	    let wrapped_segments = wrap_line(line_text_for_display, content_width);
+	    
+	    // For word wrap, preferred column should be the visual screen position
+	    // taking into account indentation on continuation lines
+	    
+	    // Find which segment we're in
+	    for (i, (segment, start_pos)) in wrapped_segments.iter().enumerate() {
+	        let segment_end = if i + 1 < wrapped_segments.len() {
+	            wrapped_segments[i + 1].1
+	        } else {
+	            line_text_for_display.chars().count()
+	        };
+	        
+	        if cursor_column >= *start_pos && cursor_column < segment_end || 
+	           (i == wrapped_segments.len() - 1 && cursor_column >= *start_pos) {
+	            // We're in this segment
+	            // For the first segment, visual column = cursor column
+	            // For continuation segments, we need to account for indentation
+	            let visual_column = if i == 0 {
+	                cursor_column
+	            } else {
+	                // Count the indentation that was added to this segment
+	                let indent_chars = segment.chars().take_while(|&c| c == ' ' || c == '\t').count();
+	                // Visual position is: indentation + position within segment content
+	                indent_chars + (cursor_column - start_pos)
+	            };
+	            
+	            if let Some(buffer) = self.current_buffer_mut() {
+	                buffer.cursor.preferred_visual_column = visual_column;
+	            }
+	            return;
+	        }
+	    }
+	    
+	    // Fallback - just use cursor column
+	    if let Some(buffer) = self.current_buffer_mut() {
+	        buffer.cursor.preferred_visual_column = cursor_column;
+	    }
+	}
 
     pub fn move_cursor_left(&mut self, content_width: usize, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
@@ -370,7 +373,7 @@ impl Editor {
                     }
                 }
             }
-            self.move_cursor_up_visual(content_width);
+            self.move_cursor_up_visual(content_width, config, visible_lines);
         } else {
             // Check if we're on the first line - if so, go to beginning of buffer
             if let Some(buffer) = self.current_buffer() {
@@ -431,7 +434,7 @@ impl Editor {
                 }
             }
             
-            self.move_cursor_down_visual(content_width);
+            self.move_cursor_down_visual(content_width, config, visible_lines);
         } else {
             // Check if we're on the last line - if so, go to end of that line
             if let Some(buffer) = self.current_buffer() {
@@ -452,213 +455,165 @@ impl Editor {
         self.adjust_viewport(config, visible_lines);
     }
 
-    fn move_cursor_up_visual(&mut self, content_width: usize) {
-        let (current_line_text, _cursor_line, cursor_column, preferred_visual_column) = if let Some(buffer) = self.current_buffer() {
-            (buffer.get_line_text(buffer.cursor.line), buffer.cursor.line, buffer.cursor.column, buffer.cursor.preferred_visual_column)
-        } else {
-            return;
-        };
-        
-        // For cursor movement, work with display text (no newlines)
-        let line_text_for_display = if current_line_text.ends_with('\n') {
-            &current_line_text[..current_line_text.len()-1]
-        } else {
-            &current_line_text
-        };
-        let wrapped_segments = wrap_line(line_text_for_display, content_width);
-        
-        // Find which visual line segment we're currently in
-        let mut current_segment_idx = None;
-        for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
-            let segment_end = if i + 1 < wrapped_segments.len() {
-                wrapped_segments[i + 1].1 // Next segment's start position
-            } else {
-                line_text_for_display.chars().count() // End of line
-            };
-            
-            // Fix boundary detection: use < for segment boundaries, <= only for the last segment
-            let is_in_segment = if i == wrapped_segments.len() - 1 {
-                // Last segment: include the end position
-                cursor_column >= *start_pos && cursor_column <= segment_end
-            } else {
-                // Other segments: exclude the end position (it belongs to next segment)
-                cursor_column >= *start_pos && cursor_column < segment_end
-            };
-            
-            if is_in_segment {
+fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visible_lines: usize) {
+    let (current_line_text, cursor_line, cursor_column, preferred_visual_column) = if let Some(buffer) = self.current_buffer() {
+        (buffer.get_line_text(buffer.cursor.line), buffer.cursor.line, buffer.cursor.column, buffer.cursor.preferred_visual_column)
+    } else {
+        return;
+    };
+    
+    let line_text_for_display = if current_line_text.ends_with('\n') {
+        &current_line_text[..current_line_text.len()-1]
+    } else {
+        &current_line_text
+    };
+    let wrapped_segments = wrap_line(line_text_for_display, content_width);
+    
+    // Find which visual line segment we're currently in
+    let mut current_segment_idx = None;
+    
+    if wrapped_segments.is_empty() {
+        current_segment_idx = Some(0);
+    } else {
+        // Find the last segment that starts at or before our cursor position
+        for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate().rev() {
+            if cursor_column >= *start_pos {
                 current_segment_idx = Some(i);
                 break;
             }
         }
         
-        if let Some(buffer) = self.current_buffer_mut() {
-            if let Some(segment_idx) = current_segment_idx {
-                if segment_idx > 0 {
-                    // Move to previous visual line within same logical line
-                    let prev_segment = &wrapped_segments[segment_idx - 1];
-                    
-                    // Always use preferred visual column for consistency
-                    let target_visual_col = preferred_visual_column;
-                    
-                    // Position in previous segment
-                    let prev_segment_len = prev_segment.0.chars().count();
-                    let new_col = prev_segment.1 + target_visual_col.min(prev_segment_len);
-                    buffer.cursor.column = new_col;
-                    // PRESERVE the original preferred visual column - don't clamp it!
-                    buffer.cursor.preferred_visual_column = target_visual_col;
-                } else {
-                    // Move to previous logical line - find the appropriate visual line
-                    if buffer.cursor.line > 0 {
-                        let target_visual_col = preferred_visual_column;
-                        
-                        buffer.move_cursor_up();
-                        
-                        // Position at the appropriate wrapped segment of the new line
-                        let new_line_text = buffer.get_line_text(buffer.cursor.line);
-                        let new_line_for_display = if new_line_text.ends_with('\n') {
-                            &new_line_text[..new_line_text.len()-1]
-                        } else {
-                            &new_line_text
-                        };
-                        let new_wrapped = wrap_line(new_line_for_display, content_width);
-                        
-                        if !new_wrapped.is_empty() {
-                            // FIXED: Always go to the LAST visual line of the previous logical line
-                            // This is the natural behavior users expect
-                            let last_segment = &new_wrapped[new_wrapped.len() - 1];
-                            let segment_len = last_segment.0.chars().count();
-                            let new_col = last_segment.1 + target_visual_col.min(segment_len);
-                            buffer.cursor.column = new_col.min(new_line_for_display.chars().count());
-                            // PRESERVE the original preferred visual column - don't clamp it!
-                            buffer.cursor.preferred_visual_column = target_visual_col;
-                        }
-                    }
-                }
-            } else {
-                // Fallback to regular up movement
-                if buffer.cursor.line > 0 {
+        // If still not found, use first segment
+        if current_segment_idx.is_none() {
+            current_segment_idx = Some(0);
+        }
+    }
+    
+    // Perform the movement
+    if let Some(segment_idx) = current_segment_idx {
+        if segment_idx > 0 {
+            // Move to previous visual line within same logical line
+            if let Some(buffer) = self.current_buffer_mut() {
+                let prev_segment = &wrapped_segments[segment_idx - 1];
+                let target_visual_col = preferred_visual_column;
+                let prev_segment_len = prev_segment.0.chars().count();
+                let new_col = prev_segment.1 + target_visual_col.min(prev_segment_len);
+                buffer.cursor.column = new_col;
+                buffer.cursor.preferred_visual_column = target_visual_col;
+            }
+        } else {
+            // We're on the first visual segment of the current line
+            if cursor_line > 0 {
+                if let Some(buffer) = self.current_buffer_mut() {
                     let target_visual_col = preferred_visual_column;
                     buffer.move_cursor_up();
-                    // PRESERVE the preferred visual column
-                    buffer.cursor.preferred_visual_column = target_visual_col;
-                }
-            }
-        }
-    }
-
-    fn move_cursor_down_visual(&mut self, content_width: usize) {
-        let (current_line_text, cursor_column, preferred_visual_column, _cursor_line, total_lines) = if let Some(buffer) = self.current_buffer() {
-            (buffer.get_line_text(buffer.cursor.line), buffer.cursor.column, buffer.cursor.preferred_visual_column, buffer.cursor.line, buffer.rope.len_lines())
-        } else {
-            return;
-        };
-        
-        // For cursor movement, work with display text (no newlines)
-        let line_text_for_display = if current_line_text.ends_with('\n') {
-            &current_line_text[..current_line_text.len()-1]
-        } else {
-            &current_line_text
-        };
-        let wrapped_segments = wrap_line(line_text_for_display, content_width);
-        
-        // Find which visual line segment we're currently in
-        let mut current_segment_idx = None;
-        
-        for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
-            let segment_end = if i + 1 < wrapped_segments.len() {
-                wrapped_segments[i + 1].1
-            } else {
-                line_text_for_display.chars().count()
-            };
-            
-            // FIXED: Use consistent boundary detection logic
-            let is_in_segment = if i == wrapped_segments.len() - 1 {
-                // Last segment: include the end position
-                cursor_column >= *start_pos && cursor_column <= segment_end
-            } else {
-                // Other segments: exclude the end position (it belongs to next segment)
-                cursor_column >= *start_pos && cursor_column < segment_end
-            };
-            
-            if is_in_segment {
-                current_segment_idx = Some(i);
-                break;
-            }
-        }
-        
-        if let Some(buffer) = self.current_buffer_mut() {
-            if let Some(segment_idx) = current_segment_idx {
-                if segment_idx < wrapped_segments.len() - 1 {
-                    // Move to next visual line within same logical line
-                    let next_segment = &wrapped_segments[segment_idx + 1];
                     
-                    // Always use preferred visual column for consistency
-                    let target_visual_col = preferred_visual_column;
+                    let new_line_text = buffer.get_line_text(buffer.cursor.line);
+                    let new_line_for_display = if new_line_text.ends_with('\n') {
+                        &new_line_text[..new_line_text.len()-1]
+                    } else {
+                        &new_line_text
+                    };
+                    let new_wrapped = wrap_line(new_line_for_display, content_width);
                     
-                    // Position in next segment
-                    let next_segment_len = next_segment.0.chars().count();
-                    let new_col = next_segment.1 + target_visual_col.min(next_segment_len);
-                    
-                    buffer.cursor.column = new_col;
-                    // PRESERVE the original preferred visual column - don't clamp it!
-                    buffer.cursor.preferred_visual_column = target_visual_col;
-                } else {
-                    // We're on the last visual segment of the current line
-                    // Move to next logical line - position at the first visual line
-                    if buffer.cursor.line < buffer.rope.len_lines() - 1 {
-                        let target_visual_col = preferred_visual_column;
-                        
-                        buffer.move_cursor_down();
-                        
-                        // Position at the appropriate wrapped segment of the new line
-                        let new_line_text = buffer.get_line_text(buffer.cursor.line);
-                        let new_line_for_display = if new_line_text.ends_with('\n') {
-                            &new_line_text[..new_line_text.len()-1]
-                        } else {
-                            &new_line_text
-                        };
-                        let new_wrapped = wrap_line(new_line_for_display, content_width);
-                        
-                        if !new_wrapped.is_empty() {
-                            // FIXED: Always go to the FIRST visual line of the next logical line
-                            // This is the natural behavior users expect
-                            let first_segment = &new_wrapped[0];
-                            let segment_len = first_segment.0.chars().count();
-                            let new_col = first_segment.1 + target_visual_col.min(segment_len);
-                            buffer.cursor.column = new_col;
-                            // PRESERVE the original preferred visual column - don't clamp it!
-                            buffer.cursor.preferred_visual_column = target_visual_col;
-                        } else {
-                            // Empty line or no wrapping
-                            buffer.cursor.column = target_visual_col.min(new_line_for_display.chars().count());
-                            // PRESERVE the original preferred visual column - don't clamp it!
-                            buffer.cursor.preferred_visual_column = target_visual_col;
-                        }
-                    }
-                }
-            } else {
-                // Fallback: couldn't find current segment
-                if let Some(buffer) = self.current_buffer() {
-                    if buffer.cursor.line < total_lines - 1 {
-                        let target_visual_col = preferred_visual_column;
-                        if let Some(buffer) = self.current_buffer_mut() {
-                            buffer.move_cursor_down();
-                            // Preserve preferred visual column
-                            let line_text = buffer.get_line_text(buffer.cursor.line);
-                            let line_content_len = if line_text.ends_with('\n') {
-                                line_text.len() - 1
-                            } else {
-                                line_text.len()
-                            };
-                            buffer.cursor.column = target_visual_col.min(line_content_len);
-                            // PRESERVE the original preferred visual column - don't clamp it!
-                            buffer.cursor.preferred_visual_column = target_visual_col;
-                        }
+                    if !new_wrapped.is_empty() {
+                        // Always go to the LAST visual line of the previous logical line
+                        let last_segment = &new_wrapped[new_wrapped.len() - 1];
+                        let segment_len = last_segment.0.chars().count();
+                        let new_col = last_segment.1 + target_visual_col.min(segment_len);
+                        buffer.cursor.column = new_col;
+                        buffer.cursor.preferred_visual_column = target_visual_col;
+                    } else {
+                        buffer.cursor.column = target_visual_col.min(new_line_for_display.chars().count());
+                        buffer.cursor.preferred_visual_column = target_visual_col;
                     }
                 }
             }
         }
     }
+    
+    self.adjust_viewport(config, visible_lines);
+}
+	
+	fn move_cursor_down_visual(&mut self, content_width: usize, config: &Config, visible_lines: usize) {
+	    let (current_line_text, cursor_line, cursor_column, preferred_visual_column, total_lines) = if let Some(buffer) = self.current_buffer() {
+	        (buffer.get_line_text(buffer.cursor.line), buffer.cursor.line, buffer.cursor.column, buffer.cursor.preferred_visual_column, buffer.rope.len_lines())
+	    } else {
+	        return;
+	    };
+	    
+	    let line_text_for_display = if current_line_text.ends_with('\n') {
+	        &current_line_text[..current_line_text.len()-1]
+	    } else {
+	        &current_line_text
+	    };
+	    let wrapped_segments = wrap_line(line_text_for_display, content_width);
+	    
+	    // Find which visual line segment we're currently in
+	    let mut current_segment_idx = None;
+	    
+	    if wrapped_segments.is_empty() {
+	        current_segment_idx = Some(0);
+	    } else {
+	        // Find the last segment that starts at or before our cursor position
+	        for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate().rev() {
+	            if cursor_column >= *start_pos {
+	                current_segment_idx = Some(i);
+	                break;
+	            }
+	        }
+	        
+	        // If still not found, use first segment
+	        if current_segment_idx.is_none() {
+	            current_segment_idx = Some(0);
+	        }
+	    }
+	    
+	    // Perform the movement
+	    if let Some(segment_idx) = current_segment_idx {
+	        if segment_idx < wrapped_segments.len() - 1 {
+	            // Move to next visual line within same logical line
+	            if let Some(buffer) = self.current_buffer_mut() {
+	                let next_segment = &wrapped_segments[segment_idx + 1];
+	                let target_visual_col = preferred_visual_column;
+	                let next_segment_len = next_segment.0.chars().count();
+	                let new_col = next_segment.1 + target_visual_col.min(next_segment_len);
+	                buffer.cursor.column = new_col;
+	                buffer.cursor.preferred_visual_column = target_visual_col;
+	            }
+	        } else {
+	            // We're on the last visual segment of the current line
+	            if cursor_line < total_lines - 1 {
+	                if let Some(buffer) = self.current_buffer_mut() {
+	                    let target_visual_col = preferred_visual_column;
+	                    buffer.move_cursor_down();
+	                    
+	                    let new_line_text = buffer.get_line_text(buffer.cursor.line);
+	                    let new_line_for_display = if new_line_text.ends_with('\n') {
+	                        &new_line_text[..new_line_text.len()-1]
+	                    } else {
+	                        &new_line_text
+	                    };
+	                    let new_wrapped = wrap_line(new_line_for_display, content_width);
+	                    
+	                    if !new_wrapped.is_empty() {
+	                        // Always go to the FIRST visual line of the next logical line
+	                        let first_segment = &new_wrapped[0];
+	                        let segment_len = first_segment.0.chars().count();
+	                        let new_col = first_segment.1 + target_visual_col.min(segment_len);
+	                        buffer.cursor.column = new_col;
+	                        buffer.cursor.preferred_visual_column = target_visual_col;
+	                    } else {
+	                        buffer.cursor.column = target_visual_col.min(new_line_for_display.chars().count());
+	                        buffer.cursor.preferred_visual_column = target_visual_col;
+	                    }
+	                }
+	            }
+	        }
+	    }
+	    
+	    self.adjust_viewport(config, visible_lines);
+	}
 
     pub fn move_cursor_home(&mut self) {
         if let Some(buffer) = self.current_buffer_mut() {
@@ -760,6 +715,14 @@ impl Editor {
     }
     
     pub fn adjust_viewport(&mut self, config: &Config, visible_lines: usize) {
+        if config.word_wrap {
+            self.adjust_viewport_word_wrap(config, visible_lines);
+        } else {
+            self.adjust_viewport_no_wrap(config, visible_lines);
+        }
+    }
+    
+    fn adjust_viewport_no_wrap(&mut self, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer() {
             let cursor_line = buffer.cursor.line;
             let scrolloff = config.scrolloff as usize;
@@ -814,6 +777,196 @@ impl Editor {
                 .min(max_viewport);
         }
     }
+    
+    fn adjust_viewport_word_wrap(&mut self, config: &Config, visible_lines: usize) {
+        // In word-wrap mode, viewport_line represents the visual line directly
+        if let Some(buffer) = self.current_buffer() {
+            let content_width = self.get_content_width(config);
+            let scrolloff = config.scrolloff as usize;
+            let cursor_visual_line = self.calculate_cursor_visual_line(buffer, content_width);
+            let total_visual_lines = self.calculate_total_visual_lines(buffer, content_width);
+            
+            // Calculate the effective scrollable area
+            let effective_visible = visible_lines.saturating_sub(scrolloff * 2);
+            if effective_visible == 0 {
+                // If scrolloff is too large for the viewport, just center the cursor
+                self.viewport_line = cursor_visual_line as isize - visible_lines as isize / 2;
+                return;
+            }
+            
+            // Calculate scrolloff boundaries in visual lines
+            let top_boundary = self.viewport_line + scrolloff as isize;
+            let bottom_boundary = self.viewport_line + (visible_lines - scrolloff - 1) as isize;
+            
+            // Adjust viewport if cursor is outside the scrolloff zone
+            if (cursor_visual_line as isize) < top_boundary {
+                // Cursor is above the top scrolloff zone - scroll up by visual lines
+                self.viewport_line = cursor_visual_line as isize - scrolloff as isize;
+            } else if (cursor_visual_line as isize) > bottom_boundary {
+                // Cursor is below the bottom scrolloff zone - scroll down by visual lines
+                self.viewport_line = cursor_visual_line as isize - (visible_lines - scrolloff - 1) as isize;
+            }
+            
+            // Limit viewport to valid range
+            let min_viewport = -(scrolloff as isize);
+            let max_viewport = (total_visual_lines as isize + scrolloff as isize) - visible_lines as isize;
+            
+            self.viewport_line = self.viewport_line
+                .max(min_viewport)
+                .min(max_viewport);
+        }
+    }
+    
+    // Helper function to calculate content width
+    fn get_content_width(&self, config: &Config) -> usize {
+        use crossterm::terminal::size;
+        let (terminal_width, _) = size().unwrap_or((80, 24));
+        let content_width = terminal_width as usize - config.margins.horizontal as usize * 2;
+        
+        // Account for gutter width
+        if let Some(buffer) = self.current_buffer() {
+            let gutter_width = match config.gutter {
+                crate::config::GutterMode::None => 0,
+                crate::config::GutterMode::Absolute | crate::config::GutterMode::Relative => {
+                    let total_lines = buffer.rope.len_lines();
+                    let digits = total_lines.to_string().len();
+                    digits + 2 // Add 2 for padding
+                }
+            };
+            content_width.saturating_sub(gutter_width)
+        } else {
+            content_width
+        }
+    }
+    
+    // Calculate which visual line the cursor is on
+    fn calculate_cursor_visual_line(&self, buffer: &crate::buffer::Buffer, content_width: usize) -> usize {
+        use crate::text_utils::wrap_line;
+        let mut visual_line = 0;
+        
+        // Count visual lines for all logical lines before the cursor line
+        for line_idx in 0..buffer.cursor.line {
+            let line_text = buffer.get_line_text(line_idx);
+            let line_text_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            let wrapped_segments = wrap_line(line_text_for_display, content_width);
+            visual_line += wrapped_segments.len().max(1);
+        }
+        
+        // Add the segment index within the current line
+        if buffer.cursor.line < buffer.rope.len_lines() {
+            let line_text = buffer.get_line_text(buffer.cursor.line);
+            let line_text_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            let wrapped_segments = wrap_line(line_text_for_display, content_width);
+            
+            // Handle edge case: cursor at or beyond the end of line
+            if buffer.cursor.column >= line_text_for_display.chars().count() {
+                visual_line += wrapped_segments.len().saturating_sub(1);
+            } else {
+                // Find which visual line segment we're currently in
+                for (segment_idx, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
+                    let segment_end = if segment_idx + 1 < wrapped_segments.len() {
+                        wrapped_segments[segment_idx + 1].1
+                    } else {
+                        line_text_for_display.chars().count()
+                    };
+                    
+                    // Use consistent boundary detection logic
+                    let is_in_segment = if segment_idx == wrapped_segments.len() - 1 {
+                        // Last segment: include the end position
+                        buffer.cursor.column >= *start_pos && buffer.cursor.column <= segment_end
+                    } else {
+                        // Other segments: exclude the end position (it belongs to next segment)
+                        buffer.cursor.column >= *start_pos && buffer.cursor.column < segment_end
+                    };
+                    
+                    if is_in_segment {
+                        visual_line += segment_idx;
+                        break;
+                    }
+                }
+            }
+        }
+
+        visual_line
+    }
+    
+    // Calculate total number of visual lines in the buffer
+    fn calculate_total_visual_lines(&self, buffer: &crate::buffer::Buffer, content_width: usize) -> usize {
+        use crate::text_utils::wrap_line;
+        let mut total_visual_lines = 0;
+        
+        for line_idx in 0..buffer.rope.len_lines() {
+            let line_text = buffer.get_line_text(line_idx);
+            let line_text_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            let wrapped_segments = wrap_line(line_text_for_display, content_width);
+            total_visual_lines += wrapped_segments.len().max(1);
+        }
+        
+        total_visual_lines
+    }
+    
+    // Convert a logical line index to visual line index
+    fn logical_to_visual_line(&self, logical_line: usize, buffer: &crate::buffer::Buffer, content_width: usize) -> usize {
+        use crate::text_utils::wrap_line;
+        let mut visual_line = 0;
+        
+        for line_idx in 0..logical_line.min(buffer.rope.len_lines()) {
+            let line_text = buffer.get_line_text(line_idx);
+            let line_text_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            let wrapped_segments = wrap_line(line_text_for_display, content_width);
+            visual_line += wrapped_segments.len().max(1);
+        }
+        
+        visual_line
+    }
+    
+    // Convert a visual line index to logical line index
+    fn visual_to_logical_line(&self, target_visual_line: usize, buffer: &crate::buffer::Buffer, content_width: usize) -> usize {
+        use crate::text_utils::wrap_line;
+        let mut visual_line = 0;
+        
+        for line_idx in 0..buffer.rope.len_lines() {
+            let line_text = buffer.get_line_text(line_idx);
+            let line_text_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            let wrapped_segments = wrap_line(line_text_for_display, content_width);
+            let segments_count = wrapped_segments.len().max(1);
+            
+            if visual_line + segments_count > target_visual_line {
+                return line_idx;
+            }
+            
+            visual_line += segments_count;
+        }
+        
+        // If we've gone past the end, return the last line
+        buffer.rope.len_lines().saturating_sub(1)
+    }
+    
 
     // Help mode methods
     pub fn enter_help_mode(&mut self) {
@@ -859,24 +1012,48 @@ impl Editor {
     }
 
     // Viewport scrolling methods (for mouse wheel/trackpad)
-    pub fn scroll_viewport_up(&mut self, lines: usize, config: &Config, visible_lines: usize) {
-        self.viewport_line = self.viewport_line.saturating_sub(lines as isize);
-        // Ensure we don't scroll too far up
-        let scrolloff = config.scrolloff as isize;
-        let min_viewport = -scrolloff;
-        self.viewport_line = self.viewport_line.max(min_viewport);
+    pub fn scroll_viewport_up(&mut self, lines: usize, config: &Config, _visible_lines: usize) {
+        if config.word_wrap {
+            // In word-wrap mode, viewport_line IS the visual line directly
+            self.viewport_line = self.viewport_line.saturating_sub(lines as isize);
+            
+            // Ensure we don't scroll too far up
+            let scrolloff = config.scrolloff as isize;
+            let min_viewport = -scrolloff;
+            self.viewport_line = self.viewport_line.max(min_viewport);
+        } else {
+            self.viewport_line = self.viewport_line.saturating_sub(lines as isize);
+            
+            // Ensure we don't scroll too far up
+            let scrolloff = config.scrolloff as isize;
+            let min_viewport = -scrolloff;
+            self.viewport_line = self.viewport_line.max(min_viewport);
+        }
     }
     
     pub fn scroll_viewport_down(&mut self, lines: usize, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer() {
-            let total_file_lines = buffer.rope.len_lines();
             let scrolloff = config.scrolloff as usize;
             
-            self.viewport_line = self.viewport_line.saturating_add(lines as isize);
-            
-            // Don't scroll past the end when accounting for virtual lines at the end
-            let max_viewport = (total_file_lines as isize + scrolloff as isize) - visible_lines as isize;
-            self.viewport_line = self.viewport_line.min(max_viewport);
+            if config.word_wrap {
+                // In word-wrap mode, viewport_line IS the visual line directly
+                let content_width = self.get_content_width(config);
+                let total_visual_lines = self.calculate_total_visual_lines(buffer, content_width);
+                
+                // Scroll down by visual lines
+                self.viewport_line = self.viewport_line.saturating_add(lines as isize);
+                
+                // Don't scroll past the end when accounting for virtual lines at the end
+                let max_viewport = (total_visual_lines as isize + scrolloff as isize) - visible_lines as isize;
+                self.viewport_line = self.viewport_line.min(max_viewport);
+            } else {
+                let total_file_lines = buffer.rope.len_lines();
+                self.viewport_line = self.viewport_line.saturating_add(lines as isize);
+                
+                // Don't scroll past the end when accounting for virtual lines at the end
+                let max_viewport = (total_file_lines as isize + scrolloff as isize) - visible_lines as isize;
+                self.viewport_line = self.viewport_line.min(max_viewport);
+            }
         }
     }
 
@@ -960,6 +1137,139 @@ impl Editor {
             false
         }
     }
+    
+    /// Move cursor to the previous paragraph boundary
+    pub fn move_to_paragraph_up(&mut self, config: &Config, visible_lines: usize) {
+        if let Some(buffer) = self.current_buffer() {
+            let current_line = buffer.cursor.line;
+            let mut target_line = None;
+            
+            // Search backwards from current line - 1
+            if current_line > 0 {
+                for line_idx in (0..current_line).rev() {
+                    if self.is_paragraph_start(buffer, line_idx) {
+                        target_line = Some(line_idx);
+                        break;
+                    }
+                }
+            }
+            
+            // If we found a paragraph boundary, move to it
+            if let Some(line) = target_line {
+                if let Some(buffer) = self.current_buffer_mut() {
+                    buffer.cursor.line = line;
+                    buffer.cursor.column = 0;
+                    buffer.cursor.preferred_visual_column = 0;
+                    buffer.cursor.clear_selection();
+                }
+                
+                // Center the viewport on the cursor
+                self.center_viewport_on_cursor(config, visible_lines);
+            }
+        }
+    }
+    
+    /// Move cursor to the next paragraph boundary
+    pub fn move_to_paragraph_down(&mut self, config: &Config, visible_lines: usize) {
+        if let Some(buffer) = self.current_buffer() {
+            let current_line = buffer.cursor.line;
+            let total_lines = buffer.rope.len_lines();
+            let mut target_line = None;
+            
+            // Search forwards from current line + 1
+            if current_line + 1 < total_lines {
+                for line_idx in (current_line + 1)..total_lines {
+                    if self.is_paragraph_start(buffer, line_idx) {
+                        target_line = Some(line_idx);
+                        break;
+                    }
+                }
+            }
+            
+            // If we found a paragraph boundary, move to it
+            if let Some(line) = target_line {
+                if let Some(buffer) = self.current_buffer_mut() {
+                    buffer.cursor.line = line;
+                    buffer.cursor.column = 0;
+                    buffer.cursor.preferred_visual_column = 0;
+                    buffer.cursor.clear_selection();
+                }
+                
+                // Center the viewport on the cursor
+                self.center_viewport_on_cursor(config, visible_lines);
+            }
+        }
+    }
+    
+    /// Check if a line is the start of a paragraph (has an empty line above it)
+    fn is_paragraph_start(&self, buffer: &Buffer, line_idx: usize) -> bool {
+        // First line is always a paragraph start
+        if line_idx == 0 {
+            return true;
+        }
+        
+        // Check if the previous line is empty
+        if line_idx > 0 {
+            let prev_line = buffer.get_line_text(line_idx - 1);
+            let prev_line_trimmed = prev_line.trim();
+            
+            // Previous line is empty or just whitespace
+            if prev_line_trimmed.is_empty() {
+                // Current line should not be empty to be a paragraph start
+                let current_line = buffer.get_line_text(line_idx);
+                let current_line_trimmed = current_line.trim();
+                return !current_line_trimmed.is_empty();
+            }
+        }
+        
+        false
+    }
+    
+    /// Center the viewport on the cursor position
+    fn center_viewport_on_cursor(&mut self, config: &Config, visible_lines: usize) {
+        if config.word_wrap {
+            if let Some(buffer) = self.current_buffer() {
+                let content_width = self.get_content_width(config);
+                let cursor_visual_line = self.calculate_cursor_visual_line(buffer, content_width);
+                let total_visual_lines = self.calculate_total_visual_lines(buffer, content_width);
+                
+                // Calculate the desired viewport position to center the cursor (in visual lines)
+                let half_height = visible_lines as isize / 2;
+                let new_viewport_visual = cursor_visual_line as isize - half_height;
+                
+                // Respect scrolloff limits
+                let scrolloff = config.scrolloff as isize;
+                let min_viewport = -scrolloff;
+                let max_viewport = (total_visual_lines as isize + scrolloff) - visible_lines as isize;
+                
+                // In word-wrap mode, viewport_line IS the visual line directly
+                self.viewport_line = new_viewport_visual
+                    .max(min_viewport)
+                    .min(max_viewport);
+            }
+        } else {
+            if let Some(buffer) = self.current_buffer() {
+                let cursor_line = buffer.cursor.line;
+                let rope_len_lines = buffer.rope.len_lines();
+                
+                // Calculate the desired viewport position to center the cursor
+                let half_height = visible_lines as isize / 2;
+                let new_viewport_line = cursor_line as isize - half_height;
+                
+                // Respect scrolloff limits
+                let scrolloff = config.scrolloff as isize;
+                let min_viewport = -scrolloff;
+                let max_viewport = (rope_len_lines as isize + scrolloff) - visible_lines as isize;
+                
+                // Buffer borrow is dropped here before mutating self
+                
+                self.viewport_line = new_viewport_line
+                    .max(min_viewport)
+                    .min(max_viewport);
+            }
+        }
+    }
+    
     /// Convert mouse coordinates to buffer position
     pub fn mouse_to_buffer_position(&self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config) -> Option<(usize, usize)> {
         // Calculate the editor area (accounting for margins)
@@ -1061,29 +1371,26 @@ impl Editor {
     }
     fn mouse_to_wrapped_position_complex(&self, relative_x: usize, relative_y: usize, content_width: usize) -> Option<(usize, usize)> {
         if let Some(buffer) = self.current_buffer() {
-            // We need to traverse all lines from viewport_line to find which logical line
-            // and column corresponds to the visual position (relative_x, relative_y)
-            let mut current_visual_line = 0;
+            // When word wrap is enabled, viewport_line still refers to logical lines,
+            // but we need to translate mouse Y position (which is in visual lines) correctly
             
-            let start_logical_line = if self.viewport_line < 0 { 0 } else { self.viewport_line as usize };
-            let virtual_offset = if self.viewport_line < 0 { (-self.viewport_line) as usize } else { 0 };
+            // First, we need to find which logical line and wrapped segment corresponds to the visual Y position
+            let mut visual_lines_counted = 0;
             
-            // Account for virtual lines at the start
-            if self.viewport_line < 0 && relative_y < virtual_offset {
-                return None; // Click is in virtual space
+            // Handle negative viewport (virtual lines before file)
+            if self.viewport_line < 0 {
+                let virtual_lines_before = (-self.viewport_line) as usize;
+                if relative_y < virtual_lines_before {
+                    return None; // Click is in virtual space
+                }
+                visual_lines_counted = virtual_lines_before;
             }
             
-            let adjusted_y = if self.viewport_line < 0 {
-                relative_y.saturating_sub(virtual_offset)
-            } else {
-                relative_y
-            };
+            // Start from the first logical line in viewport
+            let start_logical_line = if self.viewport_line < 0 { 0 } else { self.viewport_line as usize };
             
-            for logical_line in start_logical_line.. {
-                if logical_line >= buffer.rope.len_lines() {
-                    break;
-                }
-                
+            // Count visual lines until we reach the target Y position
+            for logical_line in start_logical_line..buffer.rope.len_lines() {
                 let line_text = buffer.get_line_text(logical_line);
                 let line_text_for_display = if line_text.ends_with('\n') {
                     &line_text[..line_text.len()-1]
@@ -1092,29 +1399,29 @@ impl Editor {
                 };
                 
                 let wrapped_segments = crate::text_utils::wrap_line(line_text_for_display, content_width);
+                let segments_count = wrapped_segments.len().max(1);
                 
-                // Check each wrapped segment of this logical line
-                for (_segment_idx, (segment_text, start_col)) in wrapped_segments.iter().enumerate() {
-                    if current_visual_line == adjusted_y {
-                        // This is the target visual line!
+                // Check if the target Y is within this logical line's visual lines
+                if relative_y >= visual_lines_counted && relative_y < visual_lines_counted + segments_count {
+                    // Found the logical line! Now find which segment
+                    let segment_index = relative_y - visual_lines_counted;
+                    
+                    if segment_index < wrapped_segments.len() {
+                        let (segment_text, start_col) = &wrapped_segments[segment_index];
                         let segment_length = segment_text.chars().count();
                         let column_in_segment = relative_x.min(segment_length);
                         let actual_column = start_col + column_in_segment;
                         return Some((logical_line, actual_column));
-                    }
-                    current_visual_line += 1;
-                }
-                
-                // If this line has no wrapped segments (empty line), still count it as one visual line
-                if wrapped_segments.is_empty() {
-                    if current_visual_line == adjusted_y {
+                    } else if wrapped_segments.is_empty() {
+                        // Empty line
                         return Some((logical_line, 0));
                     }
-                    current_visual_line += 1;
                 }
+                
+                visual_lines_counted += segments_count;
             }
             
-            // If we get here, the click was beyond the available content
+            // Click was beyond the available content
             None
         } else {
             None
@@ -1195,4 +1502,3 @@ impl Editor {
         }
     }
 }
-

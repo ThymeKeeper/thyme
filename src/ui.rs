@@ -95,9 +95,15 @@ impl Ui {
             let content_height = content_area.height as usize;
 
             // Get wrapped lines and cursor position
-            let (wrapped_lines, cursor_visual_pos) = self.prepare_wrapped_content(
-                buffer, editor, config, content_width, content_height
-            );
+            let (wrapped_lines, cursor_visual_pos) = if config.word_wrap {
+                self.prepare_wrapped_content_visual(
+                    buffer, editor, config, content_width, content_height
+                )
+            } else {
+                self.prepare_wrapped_content(
+                    buffer, editor, config, content_width, content_height
+                )
+            };
 
             // Convert to ratatui Lines with syntax highlighting
             let lines: Vec<Line> = wrapped_lines.iter().map(|wl| {
@@ -566,6 +572,149 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         (wrapped_lines, cursor_visual_pos)
     }
 
+    // New method for word-wrap aware content preparation
+    fn prepare_wrapped_content_visual(
+        &self,
+        buffer: &Buffer,
+        editor: &Editor,
+        config: &Config,
+        content_width: usize,
+        content_height: usize,
+    ) -> (Vec<WrappedLine>, Option<(usize, usize)>) {
+        let mut wrapped_lines = Vec::new();
+        let mut cursor_visual_pos = None;
+        let scrolloff = config.scrolloff as usize;
+        let total_file_lines = buffer.rope.len_lines();
+        
+        // In word-wrap mode, viewport_line IS the visual line directly
+        let viewport_visual_line = editor.viewport_line;
+        
+        // Add virtual lines at the start if needed
+        let virtual_lines_before = if viewport_visual_line < 0 {
+            (-viewport_visual_line) as usize
+        } else {
+            0
+        };
+        
+        for _ in 0..virtual_lines_before.min(content_height) {
+            wrapped_lines.push(WrappedLine {
+                content: "~".to_string(),
+                logical_line: usize::MAX,
+                line_start_col: 0,
+                line_end_col: 1,
+            });
+        }
+        
+        // Now we need to find which logical line corresponds to our visual viewport start
+        let mut current_visual_line = 0;
+        let start_visual_line = if viewport_visual_line >= 0 {
+            viewport_visual_line as usize
+        } else {
+            0
+        };
+        
+        // Iterate through all logical lines, counting visual lines
+        for logical_line in 0..total_file_lines {
+            let line_text = buffer.get_line_text(logical_line);
+            let line_text_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            let line_wrapped = self.wrap_line(line_text_for_display, content_width);
+            let num_visual_lines = line_wrapped.len().max(1);
+            
+            // Check if any of this logical line's visual lines are in our viewport
+            for (segment_idx, (wrapped_content, start_col)) in line_wrapped.iter().enumerate() {
+                // Skip visual lines before our viewport
+                if current_visual_line < start_visual_line {
+                    current_visual_line += 1;
+                    continue;
+                }
+                
+                // We've filled the screen
+                if wrapped_lines.len() >= content_height {
+                    return (wrapped_lines, cursor_visual_pos);
+                }
+                
+                let end_col = start_col + wrapped_content.chars().count();
+                
+                wrapped_lines.push(WrappedLine {
+                    content: wrapped_content.clone(),
+                    logical_line,
+                    line_start_col: *start_col,
+                    line_end_col: end_col,
+                });
+                
+                // Check if cursor is in this wrapped segment
+                if logical_line == buffer.cursor.line {
+                    let cursor_col = buffer.cursor.column;
+                    if cursor_col >= *start_col && cursor_col <= end_col {
+                        let visual_col = cursor_col - start_col;
+                        let visual_line_idx = wrapped_lines.len() - 1;
+                        cursor_visual_pos = Some((visual_col, visual_line_idx));
+                    }
+                }
+                
+                current_visual_line += 1;
+            }
+            
+            // Handle empty lines
+            if line_wrapped.is_empty() {
+                if current_visual_line >= start_visual_line && wrapped_lines.len() < content_height {
+                    wrapped_lines.push(WrappedLine {
+                        content: String::new(),
+                        logical_line,
+                        line_start_col: 0,
+                        line_end_col: 0,
+                    });
+                    
+                    if logical_line == buffer.cursor.line && buffer.cursor.column == 0 {
+                        cursor_visual_pos = Some((0, wrapped_lines.len() - 1));
+                    }
+                }
+                current_visual_line += 1;
+            }
+        }
+        
+        // Add virtual lines at the end if needed
+        while wrapped_lines.len() < content_height {
+            wrapped_lines.push(WrappedLine {
+                content: "~".to_string(),
+                logical_line: usize::MAX,
+                line_start_col: 0,
+                line_end_col: 1,
+            });
+        }
+        
+        (wrapped_lines, cursor_visual_pos)
+    }
+
+    // Convert a logical line number to visual line number
+    fn logical_to_visual_line(&self, buffer: &Buffer, logical_line: isize, content_width: usize) -> isize {
+        if logical_line < 0 {
+            return logical_line; // Virtual lines before the file
+        }
+        
+        let mut visual_line = 0;
+        let target_logical = logical_line as usize;
+        
+        for line_idx in 0..target_logical.min(buffer.rope.len_lines()) {
+            let line_text = buffer.get_line_text(line_idx);
+            let line_text_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            let wrapped = self.wrap_line(line_text_for_display, content_width);
+            visual_line += wrapped.len().max(1) as isize;
+        }
+        
+        visual_line
+    }
+
     fn wrap_line(&self, text: &str, width: usize) -> Vec<(String, usize)> {
         wrap_line(text, width)
     }
@@ -697,76 +846,77 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         Style::default().fg(color).add_modifier(modifiers)
     }
 
-    fn draw_status_line(&self, f: &mut ratatui::Frame, area: Rect, editor: &Editor, config: &Config) {
-        let status_bg = config.theme.parse_color(&config.theme.colors.status_bar_bg);
-        let status_fg = config.theme.parse_color(&config.theme.colors.status_bar_fg);
+	fn draw_status_line(&self, f: &mut ratatui::Frame, area: Rect, editor: &Editor, config: &Config) {
+	    let status_bg = config.theme.parse_color(&config.theme.colors.status_bar_bg);
+	    let status_fg = config.theme.parse_color(&config.theme.colors.status_bar_fg);
 
-        if let Some(buffer) = editor.current_buffer() {
-            // Left side: filename, dirty indicator, language, and mode indicators
-            let mut left_text = String::new();
-            
-            // File info
-            let file_name = buffer.file_path
-                .as_ref()
-                .and_then(|p| p.file_name())
-                .and_then(|n| n.to_str())
-                .unwrap_or("[No Name]");
-            
-            left_text.push_str(&format!("  {}", file_name));
+	    if let Some(buffer) = editor.current_buffer() {
+	        // Left side: filename, dirty indicator, language, and mode indicators
+	        let mut left_text = String::new();
+	        
+	        // File info
+	        let file_name = buffer.file_path
+	            .as_ref()
+	            .and_then(|p| p.file_name())
+	            .and_then(|n| n.to_str())
+	            .unwrap_or("[No Name]");
+	        
+	        left_text.push_str(&format!("  {}", file_name));
 
-            if buffer.dirty {
-                left_text.push_str("*");
-            }
+	        if buffer.dirty {
+	            left_text.push_str("*");
+	        }
 
-            // Language indicator
-            let display_name = Buffer::get_language_display_name(&buffer.language);
-            left_text.push_str(&format!(" | {}", display_name));
-            
-            // Word wrap indicator (only if enabled)
-            if config.word_wrap {
-                left_text.push_str(" | WRAP");
-            }
-            
-            // Mode indicators (only when in special modes)
-            if editor.language_selection_mode {
-                left_text.push_str(" | LANGUAGE SELECTION");
-            } else if editor.theme_selection_mode {
-                left_text.push_str(" | THEME SELECTION");
-            }
+	        // Language indicator
+	        let display_name = Buffer::get_language_display_name(&buffer.language);
+	        left_text.push_str(&format!(" | {}", display_name));
+	        
+	        // Word wrap indicator (only if enabled)
+	        if config.word_wrap {
+	            left_text.push_str(" | WRAP");
+	        }
+	        
+	        // Mode indicators (only when in special modes)
+	        if editor.language_selection_mode {
+	            left_text.push_str(" | LANGUAGE SELECTION");
+	        } else if editor.theme_selection_mode {
+	            left_text.push_str(" | THEME SELECTION");
+	        }
 
-            // Right side: cursor position (row/total:column)
-            let total_lines = buffer.rope.len_lines();
-            let right_text = format!("{}/{}:{}  ", 
-                buffer.cursor.line + 1, 
-                total_lines,
-                buffer.cursor.column + 1
-            );
+	        // Right side: cursor position (row/total:column) and preferred column
+	        let total_lines = buffer.rope.len_lines();
+	        let right_text = format!("{}/{}:{} [pref:{}]  ", 
+	            buffer.cursor.line + 1, 
+	            total_lines,
+	            buffer.cursor.column + 1,
+	            buffer.cursor.preferred_visual_column
+	        );
 
-            // Create layout for left and right alignment
-            let chunks = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Min(0), Constraint::Length(right_text.len() as u16)])
-                .split(area);
+	        // Create layout for left and right alignment
+	        let chunks = Layout::default()
+	            .direction(Direction::Horizontal)
+	            .constraints([Constraint::Min(0), Constraint::Length(right_text.len() as u16)])
+	            .split(area);
 
-            // Left-aligned content
-            let left_status = Paragraph::new(left_text)
-                .style(Style::default().bg(status_bg).fg(status_fg))
-                .alignment(Alignment::Left);
-            f.render_widget(left_status, chunks[0]);
+	        // Left-aligned content
+	        let left_status = Paragraph::new(left_text)
+	            .style(Style::default().bg(status_bg).fg(status_fg))
+	            .alignment(Alignment::Left);
+	        f.render_widget(left_status, chunks[0]);
 
-            // Right-aligned content
-            let right_status = Paragraph::new(right_text)
-                .style(Style::default().bg(status_bg).fg(status_fg))
-                .alignment(Alignment::Right);
-            f.render_widget(right_status, chunks[1]);
-        } else {
-            // No buffer - just show a simple status
-            let status = Paragraph::new("[No Buffer]")
-                .style(Style::default().bg(status_bg).fg(status_fg))
-                .alignment(Alignment::Left);
-            f.render_widget(status, area);
-        }
-    }
+	        // Right-aligned content
+	        let right_status = Paragraph::new(right_text)
+	            .style(Style::default().bg(status_bg).fg(status_fg))
+	            .alignment(Alignment::Right);
+	        f.render_widget(right_status, chunks[1]);
+	    } else {
+	        // No buffer - just show a simple status
+	        let status = Paragraph::new("[No Buffer]")
+	            .style(Style::default().bg(status_bg).fg(status_fg))
+	            .alignment(Alignment::Left);
+	        f.render_widget(status, area);
+	    }
+	}
 
     // Draw help modal
     fn draw_help_modal(&self, f: &mut ratatui::Frame, config: &Config) {
@@ -800,6 +950,8 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             Line::from("  Home           Move to beginning of line"),
             Line::from("  End            Move to end of line"),
             Line::from("  Page Up/Down   Move by page"),
+            Line::from("  Ctrl+PgUp      Move to previous paragraph"),
+            Line::from("  Ctrl+PgDown    Move to next paragraph"),
             Line::from(""),
             Line::from("✏️  TEXT EDITING"),
             Line::from("  Enter          Insert new line"),
@@ -1375,4 +1527,3 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         f.render_widget(gutter_paragraph, area);
     }
 }
-
