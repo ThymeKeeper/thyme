@@ -27,7 +27,7 @@ punctuation = "#a6accd"    # Light Purple Gray
 tag = "#ff5370"            # Red
 attribute = "#c3e88d"      # Green
 normal = "#a6accd"         # Light Purple Gray
-virtual_line = "#697098"   # Comment (used for virtual lines)
+virtual_line = "#3f445d"   # More visible color for virtual lines
 
 # UI colors
 status_bar_bg = "#2f334d"

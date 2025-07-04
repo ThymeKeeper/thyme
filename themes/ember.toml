@@ -27,6 +27,7 @@ punctuation = "#ddd6c1"    # Cream
 tag = "#e74c3c"            # Red
 attribute = "#a3be8c"      # Muted Green
 normal = "#ddd6c1"         # Cream
+virtual_line = "#372e23"   # More visible color for virtual lines
 
 # UI colors
 status_bar_bg = "#241e16"

@@ -2,7 +2,7 @@
 
 use crate::{
     buffer::Buffer, 
-    config::Config, 
+    config::{Config, GutterMode}, 
     cursor::Position,
     editor::Editor, 
     syntax::TokenType,
@@ -74,8 +74,25 @@ impl Ui {
                 vertical: config.margins.vertical,
             });
 
-            let content_width = self.get_content_width(config);
-            let content_height = editor_area.height as usize; // No borders to account for
+            // Calculate gutter width based on mode
+            let gutter_width = self.calculate_gutter_width(buffer, config.gutter);
+            
+            // Split the editor area into gutter and content areas
+            let (gutter_area, content_area) = if gutter_width > 0 {
+                let chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([
+                        Constraint::Length(gutter_width as u16),
+                        Constraint::Min(0),
+                    ])
+                    .split(editor_area);
+                (Some(chunks[0]), chunks[1])
+            } else {
+                (None, editor_area)
+            };
+
+            let content_width = content_area.width as usize;
+            let content_height = content_area.height as usize;
 
             // Get wrapped lines and cursor position
             let (wrapped_lines, cursor_visual_pos) = self.prepare_wrapped_content(
@@ -104,15 +121,20 @@ let lines: Vec<Line> = wrapped_lines.iter().map(|wl| {
             let paragraph = Paragraph::new(lines)
                 .style(Style::default().bg(bg_color).fg(fg_color));
 
-            f.render_widget(paragraph, editor_area);
+            f.render_widget(paragraph, content_area);
 
-            // Draw cursor at calculated position (no border offset)
+            // Draw gutter if enabled
+            if let Some(gutter_area) = gutter_area {
+                self.draw_gutter(f, gutter_area, buffer, editor, config, &wrapped_lines);
+            }
+
+            // Draw cursor at calculated position (adjust for gutter)
             if let Some((cursor_x, cursor_y)) = cursor_visual_pos {
-                let screen_x = editor_area.x + cursor_x as u16;
-                let screen_y = editor_area.y + cursor_y as u16;
+                let screen_x = content_area.x + cursor_x as u16;
+                let screen_y = content_area.y + cursor_y as u16;
                 
-                if screen_x < editor_area.x + editor_area.width && 
-                   screen_y < editor_area.y + editor_area.height {
+                if screen_x < content_area.x + content_area.width && 
+                   screen_y < content_area.y + content_area.height {
                     f.set_cursor_position((screen_x, screen_y));
                     
                     // Apply cursor color if supported by terminal
@@ -774,13 +796,14 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             Line::from("  Shift+Click    Extend selection"),
             Line::from("  Shift+Arrows   Extend selection with keyboard"),
             Line::from(""),
-            Line::from("🎨 CUSTOMIZATION"),
-            Line::from("  F1             Show this help"),
-            Line::from("  F2/F3          Adjust vertical margins"),
-            Line::from("  F4/F5          Adjust horizontal margins"),
-            Line::from("  F6             Toggle word wrap"),
-            Line::from("  Ctrl+L         Change language/syntax"),
-            Line::from("  Ctrl+T         Change color theme"),
+                Line::from("🎨 CUSTOMIZATION"),
+                Line::from("  F1             Show this help"),
+                Line::from("  F2/F3          Adjust vertical margins"),
+                Line::from("  F4/F5          Adjust horizontal margins"),
+                Line::from("  F6             Toggle word wrap"),
+                Line::from("  F7             Toggle gutter (None/Absolute/Relative)"),
+                Line::from("  Ctrl+L         Change language/syntax"),
+                Line::from("  Ctrl+T         Change color theme"),
             Line::from(""),
             Line::from("💡 FEATURES"),
             Line::from("  • Syntax highlighting for 35+ languages"),
@@ -1243,6 +1266,92 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             "white" => Some(Color::White),
             _ => None,
         }
+    }
+    
+    /// Calculate the width needed for the gutter based on the mode and file size
+    fn calculate_gutter_width(&self, buffer: &Buffer, mode: GutterMode) -> usize {
+        match mode {
+            GutterMode::None => 0,
+            GutterMode::Absolute | GutterMode::Relative => {
+                // Calculate the number of digits needed for the line count
+                let total_lines = buffer.rope.len_lines();
+                let digits = total_lines.to_string().len();
+                // Add 2 spaces for padding (1 before, 1 after the number)
+                digits + 2
+            }
+        }
+    }
+    
+    /// Draw the gutter (line numbers) on the left side
+    fn draw_gutter(
+        &self,
+        f: &mut ratatui::Frame,
+        area: Rect,
+        buffer: &Buffer,
+        editor: &Editor,
+        config: &Config,
+        wrapped_lines: &[WrappedLine],
+    ) {
+        let line_number_color = config.theme.parse_color(&config.theme.colors.line_number);
+        let current_line_color = config.theme.parse_color(&config.theme.colors.foreground);
+        let bg_color = config.theme.parse_color(&config.theme.colors.background);
+        
+        let mut gutter_lines = Vec::new();
+        let cursor_line = buffer.cursor.line;
+        
+        // Track the last logical line we rendered to avoid duplicate line numbers
+        let mut last_logical_line = None;
+        
+        for wrapped in wrapped_lines {
+            let line_content = if wrapped.logical_line == usize::MAX {
+                // Virtual line - no line number
+                " ".repeat(area.width as usize)
+            } else {
+                // Only show line number for the first wrapped segment of each logical line
+                if last_logical_line == Some(wrapped.logical_line) {
+                    // This is a continuation of the previous logical line
+                    " ".repeat(area.width as usize)
+                } else {
+                    // This is a new logical line
+                    last_logical_line = Some(wrapped.logical_line);
+                    
+                    let line_number = match config.gutter {
+                        GutterMode::Absolute => wrapped.logical_line + 1,
+                        GutterMode::Relative => {
+                            if wrapped.logical_line == cursor_line {
+                                wrapped.logical_line + 1
+                            } else {
+                                let diff = if wrapped.logical_line > cursor_line {
+                                    wrapped.logical_line - cursor_line
+                                } else {
+                                    cursor_line - wrapped.logical_line
+                                };
+                                diff
+                            }
+                        }
+                        GutterMode::None => unreachable!("Gutter should not be drawn when mode is None"),
+                    };
+                    
+                    // Format the line number with right alignment
+                    format!("{:>width$} ", line_number, width = area.width as usize - 1)
+                }
+            };
+            
+            // Use different color for current line
+            let color = if wrapped.logical_line == cursor_line {
+                current_line_color
+            } else {
+                line_number_color
+            };
+            
+            let line = Line::styled(line_content, Style::default().fg(color).bg(bg_color));
+            gutter_lines.push(line);
+        }
+        
+        let gutter_paragraph = Paragraph::new(gutter_lines)
+            .style(Style::default().bg(bg_color));
+        
+        f.render_widget(gutter_paragraph, area);
     }
 }
 

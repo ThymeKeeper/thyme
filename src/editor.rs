@@ -745,7 +745,7 @@ impl Editor {
         }
     }
     
-    fn adjust_viewport(&mut self, config: &Config, visible_lines: usize) {
+    pub fn adjust_viewport(&mut self, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer() {
             let cursor_line = buffer.cursor.line;
             let scrolloff = config.scrolloff as usize;
@@ -923,7 +923,27 @@ impl Editor {
             return None;
         }
         
-        let relative_x = (mouse_x - editor_x) as usize;
+        // Calculate gutter width
+        let gutter_width = if let Some(buffer) = self.current_buffer() {
+            match config.gutter {
+                crate::config::GutterMode::None => 0,
+                crate::config::GutterMode::Absolute | crate::config::GutterMode::Relative => {
+                    let total_lines = buffer.rope.len_lines();
+                    let digits = total_lines.to_string().len();
+                    digits + 2 // Add 2 for padding
+                }
+            }
+        } else {
+            0
+        };
+        
+        // Adjust for gutter
+        let content_start_x = editor_x + gutter_width as u16;
+        if mouse_x < content_start_x {
+            return None; // Click is in the gutter
+        }
+        
+        let relative_x = (mouse_x - content_start_x) as usize;
         let relative_y = (mouse_y - editor_y) as usize;
         
         if let Some(buffer) = self.current_buffer() {
@@ -1058,8 +1078,23 @@ impl Editor {
             .map(|(w, _)| w as usize)
             .unwrap_or(80);
         
+        // Calculate gutter width
+        let gutter_width = if let Some(buffer) = self.current_buffer() {
+            match config.gutter {
+                crate::config::GutterMode::None => 0,
+                crate::config::GutterMode::Absolute | crate::config::GutterMode::Relative => {
+                    let total_lines = buffer.rope.len_lines();
+                    let digits = total_lines.to_string().len();
+                    digits + 2 // Add 2 for padding
+                }
+            }
+        } else {
+            0
+        };
+        
         terminal_width
             .saturating_sub((config.margins.horizontal * 2) as usize)
+            .saturating_sub(gutter_width)
             .max(10)
     }
     

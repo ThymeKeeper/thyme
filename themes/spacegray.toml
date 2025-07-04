@@ -27,6 +27,7 @@ punctuation = "#b7b8b9"    # Light Gray
 tag = "#e74c3c"            # Red
 attribute = "#96ceb4"      # Mint Green
 normal = "#b7b8b9"         # Light Gray
+virtual_line = "#3f454b"   # More visible color for virtual lines
 
 # UI colors
 status_bar_bg = "#343741"

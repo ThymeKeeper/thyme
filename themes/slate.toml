@@ -27,6 +27,7 @@ punctuation = "#cbd5e1"    # Slate
 tag = "#f472b6"            # Pink
 attribute = "#6ee7b7"      # Green
 normal = "#cbd5e1"         # Slate
+virtual_line = "#364357"   # More visible color for virtual lines
 
 # UI colors
 status_bar_bg = "#334155"

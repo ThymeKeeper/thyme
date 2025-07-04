@@ -27,6 +27,7 @@ punctuation = "#eceff4"    # Nord6 - Snow Storm
 tag = "#81a1c1"            # Nord9 - Blue
 attribute = "#d08770"      # Nord12 - Orange
 normal = "#d8dee9"         # Nord4 - Snow Storm
+virtual_line = "#2f343d"   # More visible color for virtual lines
 
 # UI colors
 status_bar_bg = "#3b4252"

@@ -27,7 +27,7 @@ punctuation = "#657b83"    # Base00
 tag = "#859900"            # Green
 attribute = "#b58900"      # Yellow
 normal = "#839496"         # Base0
-virtual_line = "#586e75"     # Comment (used for virtual lines)
+virtual_line = "#1e424c"   # More visible color for virtual lines
 
 # UI colors
 status_bar_bg = "#073642"

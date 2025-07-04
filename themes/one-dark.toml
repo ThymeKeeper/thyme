@@ -27,7 +27,7 @@ punctuation = "#abb2bf"    # Default
 tag = "#e06c75"            # Red
 attribute = "#d19a66"      # Orange
 normal = "#abb2bf"         # Default
-virtual_line = "#5c6370"   # Comment (used for virtual lines)
+virtual_line = "#3a3f49"   # More visible color for virtual lines
 
 # UI colors
 status_bar_bg = "#21252b"

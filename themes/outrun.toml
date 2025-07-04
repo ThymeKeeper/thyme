@@ -27,6 +27,7 @@ punctuation = "#d9e6f2"    # Off White
 tag = "#ff5277"            # Pink Red
 attribute = "#7df46a"      # Neon Green
 normal = "#d9e6f2"         # Off White
+virtual_line = "#272631"   # More visible color for virtual lines
 
 # UI colors
 status_bar_bg = "#1a1625"

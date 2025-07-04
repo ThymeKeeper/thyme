@@ -380,29 +380,46 @@ impl App {
 
         if key == keybindings.increase_vertical_margin {
             self.config.margins.vertical = self.config.margins.vertical.saturating_add(1);
+            // Recalculate viewport to maintain scrolloff with new margins
+            let visible_lines = self.calculate_visible_lines();
+            self.editor.adjust_viewport(&self.config, visible_lines);
             return Ok(true);
         }
 
         if key == keybindings.decrease_vertical_margin {
             self.config.margins.vertical = self.config.margins.vertical.saturating_sub(1);
+            // Recalculate viewport to maintain scrolloff with new margins
+            let visible_lines = self.calculate_visible_lines();
+            self.editor.adjust_viewport(&self.config, visible_lines);
             return Ok(true);
         }
 
         if key == keybindings.increase_horizontal_margin {
             self.config.margins.horizontal = self.config.margins.horizontal.saturating_add(1);
             self.reset_preferred_column();
+            // Recalculate viewport in case content width changes affect wrapped lines
+            let visible_lines = self.calculate_visible_lines();
+            self.editor.adjust_viewport(&self.config, visible_lines);
             return Ok(true);
         }
 
         if key == keybindings.decrease_horizontal_margin {
             self.config.margins.horizontal = self.config.margins.horizontal.saturating_sub(1);
             self.reset_preferred_column();
+            // Recalculate viewport in case content width changes affect wrapped lines
+            let visible_lines = self.calculate_visible_lines();
+            self.editor.adjust_viewport(&self.config, visible_lines);
             return Ok(true);
         }
 
         if key == keybindings.toggle_word_wrap {
             self.config.word_wrap = !self.config.word_wrap;
             self.reset_preferred_column();
+            return Ok(true);
+        }
+
+        if key == keybindings.toggle_gutter {
+            self.config.toggle_gutter();
             return Ok(true);
         }
 

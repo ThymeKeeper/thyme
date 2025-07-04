@@ -6,7 +6,7 @@ A terminal text editor written in Rust.
 
 - Syntax highlighting for 35+ languages
 - Optional word wrapping with proper cursor navigation
-- Optiona auto-save
+- Optional auto-save
 - Customizable, hot-swappable color themes
 - Adjustable margins
 - Configurable scrolloff zones (keep lines visible above/below caret). this can be used to keep caret centered if desired.

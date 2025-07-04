@@ -16,6 +16,8 @@ pub struct Config {
     pub theme: Theme,
     #[serde(default)]
     pub theme_name: Option<String>,
+    #[serde(default)]
+    pub gutter: GutterMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +28,7 @@ pub struct KeyBindings {
     pub increase_horizontal_margin: SerializableKeyEvent,
     pub decrease_horizontal_margin: SerializableKeyEvent,
     pub toggle_word_wrap: SerializableKeyEvent,
+    pub toggle_gutter: SerializableKeyEvent,
     pub language_selection: SerializableKeyEvent,
     pub theme_selection: SerializableKeyEvent,
 }
@@ -40,6 +43,30 @@ pub struct SerializableKeyEvent {
 pub struct Margins {
     pub vertical: u16,
     pub horizontal: u16,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum GutterMode {
+    None,
+    Absolute,
+    Relative,
+}
+
+impl Default for GutterMode {
+    fn default() -> Self {
+        GutterMode::None
+    }
+}
+
+impl GutterMode {
+    /// Cycle to the next gutter mode
+    pub fn cycle(&self) -> Self {
+        match self {
+            GutterMode::None => GutterMode::Absolute,
+            GutterMode::Absolute => GutterMode::Relative,
+            GutterMode::Relative => GutterMode::None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,7 +214,7 @@ impl Default for Theme {
                 modal_fg: "#cccccc".to_string(),
                 selection_bg: "#007acc".to_string(),
                 selection_fg: "#ffffff".to_string(),
-                virtual_line: "#6a9955".to_string(), // Same as comment
+                virtual_line: "#3e3e3e".to_string(), // Darker gray for virtual lines
             },
             styles: ThemeStyles::default(),
         }
@@ -222,6 +249,10 @@ impl Default for Config {
                     code: "F6".to_string(),
                     modifiers: vec![],
                 },
+                toggle_gutter: SerializableKeyEvent {
+                    code: "F7".to_string(),
+                    modifiers: vec![],
+                },
                 language_selection: SerializableKeyEvent {
                     code: "l".to_string(),
                     modifiers: vec!["ctrl".to_string()],
@@ -240,6 +271,7 @@ impl Default for Config {
             scrolloff: 3,
             theme: Theme::default(),
             theme_name: None,
+            gutter: GutterMode::None,
         }
     }
 }
@@ -440,7 +472,7 @@ impl Config {
                 modal_fg: "#f8f8f2".to_string(),
                 selection_bg: "#49483e".to_string(),
                 selection_fg: "#f8f8f2".to_string(),
-                virtual_line: "#75715e".to_string(), // Same as comment
+                virtual_line: "#49483e".to_string(), // Darker than comment, matches selection
             },
             styles: ThemeStyles::default(),
         };
@@ -482,7 +514,7 @@ impl Config {
                 modal_fg: "#f8f8f2".to_string(),
                 selection_bg: "#44475a".to_string(),
                 selection_fg: "#f8f8f2".to_string(),
-                virtual_line: "#6272a4".to_string(), // Same as comment
+                virtual_line: "#44475a".to_string(), // Darker than comment, matches current line
             },
             styles: ThemeStyles::default(),
         };
@@ -524,7 +556,7 @@ impl Config {
                 modal_fg: "#839496".to_string(),
                 selection_bg: "#073642".to_string(),
                 selection_fg: "#93a1a1".to_string(),
-                virtual_line: "#586e75".to_string(), // Same as comment
+                virtual_line: "#073642".to_string(), // Darker than comment, matches current line
             },
             styles: ThemeStyles::default(),
         };
@@ -566,7 +598,7 @@ impl Config {
                 modal_fg: "#d8dee9".to_string(),
                 selection_bg: "#434c5e".to_string(),
                 selection_fg: "#eceff4".to_string(),
-                virtual_line: "#616e88".to_string(), // Same as comment
+                virtual_line: "#2e3440".to_string(), // Darker than comment, matches current line
             },
             styles: ThemeStyles::default(),
         };
@@ -648,6 +680,13 @@ impl Theme {
         }
         
         modifiers
+    }
+}
+
+impl Config {
+    /// Toggle gutter mode to the next option
+    pub fn toggle_gutter(&mut self) {
+        self.gutter = self.gutter.cycle();
     }
 }
 
