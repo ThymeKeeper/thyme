@@ -561,8 +561,16 @@ impl SyntaxHighlighter {
         }
 
         let mut current_state = ScanState::Normal;
+        let total_lines = rope.len_lines();
         
-        for line_idx in 0..rope.len_lines() {
+        // Add a safety limit to prevent infinite loops
+        let max_lines = total_lines.min(100000); // Reasonable limit
+        
+        for line_idx in 0..max_lines {
+            if line_idx >= total_lines {
+                break;
+            }
+            
             let line_text = rope.line(line_idx).to_string();
             let (tokens, end_state) = self.scan_line(&line_text, current_state);
             
@@ -581,6 +589,10 @@ impl SyntaxHighlighter {
         let chars: Vec<char> = line.chars().collect();
         let mut i = 0;
         let mut current_token_start = 0;
+        
+        // Safety: prevent infinite loops
+        let max_iterations = chars.len() * 2; // Should never need more than this
+        let mut iterations = 0;
 
         // Handle continuing states from previous line
         match state {
@@ -597,6 +609,15 @@ impl SyntaxHighlighter {
         }
 
         while i < chars.len() {
+            iterations += 1;
+            if iterations > max_iterations {
+                // Detected potential infinite loop
+                eprintln!("Warning: Infinite loop detected in syntax highlighter for language '{}'", self.language);
+                eprintln!("Line content: {:?}", line);
+                eprintln!("Current state: {:?}, position: {}/{}", state, i, chars.len());
+                break;
+            }
+            
             let ch = chars[i];
             
             match state {
@@ -678,30 +699,50 @@ impl SyntaxHighlighter {
                             i += 1;
                         }
                     }
-                    // Check for Rust lifetime parameters ('a, 'static, etc.)
-                    else if ch == '\'' && i + 1 < chars.len() && self.language == "rust" {
-                        let next_char = chars[i + 1];
-                        // Check if this is a character literal
-                        if (chars.len() > i + 2) &&
-                           ((next_char.is_ascii_alphabetic() && chars[i + 2] == '\'') ||    // Single char
-                            (next_char == '\\' && chars.len() > i + 3 && chars[i + 3] == '\'')) {  // Escape sequence
-                            // This is a character literal, not a lifetime
-                            state = ScanState::InString { quote: ch, escaped: false };
-                            current_token_start = i;
-                            i += 1;
-                        } else if next_char.is_alphabetic() {
-                            // This is likely a lifetime parameter, not a string
-                            let lifetime_start = i;
-                            let mut j = i + 1;
-                            while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
-                                j += 1;
+                    // Check for Rust lifetime parameters ('a, 'static, etc.) and character literals
+                    else if ch == '\'' && self.language == "rust" {
+                        if i + 1 < chars.len() {
+                            let next_char = chars[i + 1];
+                            
+                            // Check for lifetime parameter (starts with letter)
+                            if next_char.is_alphabetic() || next_char == '_' {
+                                // Could be either a lifetime or a character literal
+                                // Look ahead to determine which it is
+                                let mut j = i + 1;
+                                while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
+                                    j += 1;
+                                }
+                                
+                                // If the next character after the identifier is a quote, it's a char literal
+                                // Otherwise, it's a lifetime
+                                if j < chars.len() && chars[j] == '\'' {
+                                    // Character literal like 'a' or 'dood' (even if invalid)
+                                    state = ScanState::InString { quote: ch, escaped: false };
+                                    current_token_start = i;
+                                    i += 1;
+                                } else {
+                                    // Lifetime parameter like 'a or 'static
+                                    tokens.push(SyntaxToken {
+                                        token_type: TokenType::Type, // Lifetimes use type color
+                                        start: i,
+                                        end: j,
+                                    });
+                                    i = j;
+                                }
+                            } else {
+                                // Any other character after ', treat as character literal
+                                state = ScanState::InString { quote: ch, escaped: false };
+                                current_token_start = i;
+                                i += 1;
                             }
+                        } else {
+                            // Just a quote at end of line
                             tokens.push(SyntaxToken {
-                                token_type: TokenType::Type, // Lifetimes use type color
-                                start: lifetime_start,
-                                end: j,
+                                token_type: TokenType::Punctuation,
+                                start: i,
+                                end: i + 1,
                             });
-                            i = j;
+                            i += 1;
                         }
                     }
                     // Check for Markdown bold/italic
@@ -1350,23 +1391,29 @@ impl SyntaxHighlighter {
                 
                 ScanState::InRawString { delimiter_len } => {
                     if ch == '"' {
-                        // Check if followed by the right number of #
-                        let mut matched = true;
-                        for j in 0..delimiter_len {
-                            if i + 1 + j >= chars.len() || chars[i + 1 + j] != '#' {
-                                matched = false;
-                                break;
+                        // Check if we have enough characters left for the closing delimiter
+                        if i + delimiter_len < chars.len() {
+                            // Check if followed by the right number of #
+                            let mut matched = true;
+                            for j in 0..delimiter_len {
+                                if chars[i + 1 + j] != '#' {
+                                    matched = false;
+                                    break;
+                                }
                             }
-                        }
-                        if matched {
-                            tokens.push(SyntaxToken {
-                                token_type: TokenType::String,
-                                start: current_token_start,
-                                end: i + 1 + delimiter_len,
-                            });
-                            state = ScanState::Normal;
-                            i += 1 + delimiter_len;
+                            if matched {
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::String,
+                                    start: current_token_start,
+                                    end: i + 1 + delimiter_len,
+                                });
+                                state = ScanState::Normal;
+                                i += 1 + delimiter_len;
+                            } else {
+                                i += 1;
+                            }
                         } else {
+                            // Not enough characters for closing delimiter
                             i += 1;
                         }
                     } else {
