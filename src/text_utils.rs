@@ -3,7 +3,8 @@
 // Shared text manipulation utilities
 
 /// Wraps a line of text to fit within a specified width, preserving word boundaries when possible.
-/// Returns a vector of (segment, start_position) tuples.
+/// Returns a vector of (segment, start_position) tuples where start_position is the character
+/// position in the original text (not including any added indentation).
 pub fn wrap_line(text: &str, width: usize) -> Vec<(String, usize)> {
     if width == 0 {
         return vec![(text.to_string(), 0)];
@@ -16,10 +17,48 @@ pub fn wrap_line(text: &str, width: usize) -> Vec<(String, usize)> {
         return vec![(String::new(), 0)];
     }
 
+    // Calculate the indentation of the first line
+    let mut indent_len = 0;
+    for &ch in &chars {
+        if ch == ' ' || ch == '\t' {
+            indent_len += 1;
+        } else {
+            break;
+        }
+    }
+    
+    // Create the indent string for continuation lines
+    let indent_string: String = chars[..indent_len].iter().collect();
+    let indent_width = indent_len; // For spaces this is accurate, tabs would need special handling
+    
     let mut start_pos = 0;
+    let mut is_first_line = true;
     
     while start_pos < chars.len() {
-        let mut end_pos = (start_pos + width).min(chars.len());
+        // Calculate effective width for this line
+        let effective_width = if is_first_line {
+            width
+        } else {
+            // For continuation lines, reduce width by indent amount
+            width.saturating_sub(indent_width)
+        };
+        
+        if effective_width == 0 {
+            // If no space left after indentation, use at least 1 character width
+            let end_pos = (start_pos + 1).min(chars.len());
+            let segment: String = if is_first_line {
+                chars[start_pos..end_pos].iter().collect()
+            } else {
+                let line_content: String = chars[start_pos..end_pos].iter().collect();
+                format!("{}{}", indent_string, line_content)
+            };
+            result.push((segment, start_pos));
+            start_pos = end_pos;
+            is_first_line = false;
+            continue;
+        }
+        
+        let mut end_pos = (start_pos + effective_width).min(chars.len());
         
         // If we're not at the end of the text, try to break at a word boundary
         if end_pos < chars.len() {
@@ -33,14 +72,22 @@ pub fn wrap_line(text: &str, width: usize) -> Vec<(String, usize)> {
             }
             
             // If we found a space and it's not too close to the start, use it
-            if break_pos > start_pos && (break_pos - start_pos) > width / 4 {
+            if break_pos > start_pos && (break_pos - start_pos) > effective_width / 4 {
                 end_pos = break_pos;
             }
         }
         
-        // Extract the segment - DON'T trim trailing spaces to preserve cursor positioning
-        let segment: String = chars[start_pos..end_pos].iter().collect();
+        // Extract the segment
+        let segment: String = if is_first_line {
+            // First line - use as is
+            chars[start_pos..end_pos].iter().collect()
+        } else {
+            // Continuation line - prepend the indentation
+            let line_content: String = chars[start_pos..end_pos].iter().collect();
+            format!("{}{}", indent_string, line_content)
+        };
         
+        // Always use the actual start position from the original text
         result.push((segment, start_pos));
         
         // Move to the next segment, skipping any spaces at the break point ONLY if we broke at a space
@@ -49,6 +96,8 @@ pub fn wrap_line(text: &str, width: usize) -> Vec<(String, usize)> {
         } else {
             start_pos = end_pos;
         }
+        
+        is_first_line = false;
     }
 
     if result.is_empty() {

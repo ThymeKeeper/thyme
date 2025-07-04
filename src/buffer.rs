@@ -1021,4 +1021,163 @@ impl Buffer {
             }
         }
     }
+    
+    /// Indent the current line or all selected lines
+    pub fn indent_lines(&mut self) {
+        const INDENT: &str = "    "; // 4 spaces
+        
+        if let Some((start, end)) = self.cursor.get_selection_range() {
+            // Multiple lines selected - indent all of them
+            let start_line = start.line;
+            let end_line = end.line;
+            
+            // Store the original text for undo
+            let mut original_text = String::new();
+            let mut new_text = String::new();
+            
+            for line_num in start_line..=end_line {
+                let line_text = self.get_line_text(line_num);
+                original_text.push_str(&line_text);
+                new_text.push_str(INDENT);
+                new_text.push_str(&line_text);
+            }
+            
+            // Calculate the character positions
+            let start_char_idx = self.rope.line_to_char(start_line);
+            let end_char_idx = if end_line + 1 < self.rope.len_lines() {
+                self.rope.line_to_char(end_line + 1)
+            } else {
+                self.rope.len_chars()
+            };
+            
+            // Remove the original lines and insert the indented ones
+            self.rope.remove(start_char_idx..end_char_idx);
+            self.rope.insert(start_char_idx, &new_text);
+            
+            // Update cursor position - move it forward by the indent amount
+            if self.cursor.line == end.line {
+                self.cursor.column += INDENT.len();
+            }
+            
+            // Update selection to maintain it after indentation
+            if let Some(sel_start) = self.cursor.selection_start.as_mut() {
+                if sel_start.line >= start_line && sel_start.line <= end_line {
+                    sel_start.column += INDENT.len();
+                }
+            }
+            
+            // Add to undo stack
+            let undo_action = UndoAction::ReplaceText {
+                position: Position { line: start_line, column: 0 },
+                old_text: original_text,
+                new_text,
+                cursor_after: Position { line: self.cursor.line, column: self.cursor.column },
+            };
+            self.add_undo_state_new_group(undo_action);
+            
+            self.mark_dirty();
+            
+            // Update syntax highlighting for affected lines
+            for line_num in start_line..=end_line {
+                self.update_syntax_for_line(line_num);
+            }
+        } else {
+            // No selection - just indent the current line
+            let line_num = self.cursor.line;
+            let line_start_char_idx = self.rope.line_to_char(line_num);
+            
+            // Insert the indent at the beginning of the line
+            self.rope.insert(line_start_char_idx, INDENT);
+            
+            // Update cursor position
+            self.cursor.column += INDENT.len();
+            self.cursor.preferred_visual_column = self.cursor.column;
+            
+            // Add to undo stack
+            let undo_action = UndoAction::InsertText {
+                position: Position { line: line_num, column: 0 },
+                text: INDENT.to_string(),
+                cursor_after: Position { line: self.cursor.line, column: self.cursor.column },
+            };
+            self.add_undo_state_new_group(undo_action);
+            
+            self.mark_dirty();
+            self.update_syntax_for_line(line_num);
+        }
+    }
+    
+    /// Dedent (unindent) the current line or all selected lines
+    pub fn dedent_lines(&mut self) {
+        const INDENT_SIZE: usize = 4;
+        
+        if let Some((start, end)) = self.cursor.get_selection_range() {
+            // Multiple lines selected - dedent all of them
+            let start_line = start.line;
+            let end_line = end.line;
+            
+            // Process each line
+            for line_num in (start_line..=end_line).rev() {
+                self.dedent_single_line(line_num);
+            }
+            
+            // Update syntax highlighting for affected lines
+            for line_num in start_line..=end_line {
+                self.update_syntax_for_line(line_num);
+            }
+        } else {
+            // No selection - just dedent the current line
+            let line_num = self.cursor.line;
+            self.dedent_single_line(line_num);
+            self.update_syntax_for_line(line_num);
+        }
+    }
+    
+    /// Helper to dedent a single line
+    fn dedent_single_line(&mut self, line_num: usize) {
+        let line_text = self.get_line_text(line_num);
+        let line_start_char_idx = self.rope.line_to_char(line_num);
+        
+        // Count spaces at the beginning of the line
+        let mut spaces_to_remove = 0;
+        for (i, ch) in line_text.chars().enumerate() {
+            if ch == ' ' && i < 4 {
+                spaces_to_remove += 1;
+            } else if ch == '\t' && i == 0 {
+                // If line starts with tab, remove it
+                spaces_to_remove = 1;
+                break;
+            } else {
+                break;
+            }
+        }
+        
+        if spaces_to_remove > 0 {
+            // Remove the spaces
+            self.rope.remove(line_start_char_idx..line_start_char_idx + spaces_to_remove);
+            
+            // Update cursor position if on this line
+            if self.cursor.line == line_num {
+                self.cursor.column = self.cursor.column.saturating_sub(spaces_to_remove);
+                self.cursor.preferred_visual_column = self.cursor.column;
+            }
+            
+            // Update selection if it's on this line
+            if let Some(sel_start) = self.cursor.selection_start.as_mut() {
+                if sel_start.line == line_num {
+                    sel_start.column = sel_start.column.saturating_sub(spaces_to_remove);
+                }
+            }
+            
+            // Add to undo stack
+            let deleted_text = " ".repeat(spaces_to_remove);
+            let undo_action = UndoAction::DeleteText {
+                position: Position { line: line_num, column: 0 },
+                text: deleted_text,
+                cursor_after: Position { line: self.cursor.line, column: self.cursor.column },
+            };
+            self.add_undo_state_new_group(undo_action);
+            
+            self.mark_dirty();
+        }
+    }
 }

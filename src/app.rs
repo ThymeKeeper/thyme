@@ -178,7 +178,17 @@ impl App {
             KeyCode::Backspace => self.editor.delete_char_backwards(content_width, &self.config, visible_lines),
             KeyCode::Delete => self.editor.delete_char_forwards(),
             KeyCode::Enter => self.editor.insert_newline(&self.config, visible_lines),
-            KeyCode::Tab => self.editor.insert_tab(content_width),
+            KeyCode::Tab => {
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    self.editor.dedent_lines();
+                } else {
+                    self.editor.indent_lines();
+                }
+            }
+            KeyCode::BackTab => {
+                // Some terminals send BackTab instead of Shift+Tab
+                self.editor.dedent_lines();
+            }
             KeyCode::Char(c) => self.editor.insert_char(c, content_width),
             _ => {}
         }

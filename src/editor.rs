@@ -713,6 +713,18 @@ impl Editor {
         }
     }
 
+    pub fn indent_lines(&mut self) {
+        if let Some(buffer) = self.current_buffer_mut() {
+            buffer.indent_lines();
+        }
+    }
+
+    pub fn dedent_lines(&mut self) {
+        if let Some(buffer) = self.current_buffer_mut() {
+            buffer.dedent_lines();
+        }
+    }
+
     pub fn delete_char_backwards(&mut self, content_width: usize, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.delete_char_backwards();
