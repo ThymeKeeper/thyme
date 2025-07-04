@@ -8,9 +8,13 @@ use crate::{
     buffer::Buffer,
 };
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind, MouseButton};
+use crossterm::{
+    event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind, MouseButton},
+    execute,
+    terminal::SetTitle,
+};
 use ratatui::{backend::Backend, Terminal};
-use std::{path::PathBuf, time::Instant};
+use std::{io::stdout, path::PathBuf, time::Instant};
 
 pub struct App {
     pub editor: Editor,
@@ -57,6 +61,9 @@ impl App {
             // Adjust viewport to respect scrolloff setting for new buffer
             self.editor.adjust_viewport_initial(&self.config, self.calculate_visible_lines());
         }
+        
+        // Set initial terminal title
+        self.update_terminal_title();
 
         while self.running {
             // Check for terminal resize
@@ -126,6 +133,7 @@ impl App {
             }
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.editor.save_current_buffer().await?;
+                self.update_terminal_title();
             }
             KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 // TODO: Implement file open dialog
@@ -490,6 +498,25 @@ impl App {
         }
     }
     
+    fn update_terminal_title(&self) {
+        if let Some(buffer) = self.editor.current_buffer() {
+            let title = if let Some(path) = &buffer.file_path {
+                if let Some(filename) = path.file_name() {
+                    filename.to_string_lossy().to_string()
+                } else {
+                    "[No Name]".to_string()
+                }
+            } else {
+                "[No Name]".to_string()
+            };
+            
+            // Set terminal title
+            let _ = execute!(stdout(), SetTitle(title));
+        } else {
+            let _ = execute!(stdout(), SetTitle(""));
+        }
+    }
+    
     async fn handle_mouse_event(&mut self, mouse: MouseEvent) -> Result<()> {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
@@ -515,6 +542,26 @@ impl App {
             MouseEventKind::Up(MouseButton::Left) => {
                 // Mouse button up - stop dragging
                 self.mouse_dragging = false;
+            }
+            MouseEventKind::ScrollDown => {
+                // Mouse wheel scroll down - scroll viewport down
+                self.editor.scroll_viewport_down(3, &self.config, self.calculate_visible_lines());
+            }
+            MouseEventKind::ScrollUp => {
+                // Mouse wheel scroll up - scroll viewport up  
+                self.editor.scroll_viewport_up(3, &self.config, self.calculate_visible_lines());
+            }
+            MouseEventKind::ScrollLeft => {
+                // Trackpad horizontal scroll left - scroll content left
+                if !self.config.word_wrap {
+                    self.editor.scroll_left(3);
+                }
+            }
+            MouseEventKind::ScrollRight => {
+                // Trackpad horizontal scroll right - scroll content right  
+                if !self.config.word_wrap {
+                    self.editor.scroll_right(3, self.calculate_content_width());
+                }
             }
             _ => {
                 // Ignore other mouse events

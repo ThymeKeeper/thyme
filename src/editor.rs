@@ -12,6 +12,7 @@ pub struct Editor {
     pub buffers: Vec<Buffer>,
     pub active_buffer: usize,
     pub viewport_line: isize,
+    pub horizontal_offset: usize,
     // Language selection mode
     pub language_selection_mode: bool,
     pub language_selection_index: usize,
@@ -34,6 +35,7 @@ impl Editor {
             buffers: Vec::new(),
             active_buffer: 0,
             viewport_line: 0,
+            horizontal_offset: 0,
             language_selection_mode: false,
             language_selection_index: 0,
             language_selection_scroll_offset: 0,
@@ -854,6 +856,40 @@ impl Editor {
         
         self.exit_filename_prompt_mode();
         Ok(())
+    }
+
+    // Viewport scrolling methods (for mouse wheel/trackpad)
+    pub fn scroll_viewport_up(&mut self, lines: usize, config: &Config, visible_lines: usize) {
+        self.viewport_line = self.viewport_line.saturating_sub(lines as isize);
+        // Ensure we don't scroll too far up
+        let scrolloff = config.scrolloff as isize;
+        let min_viewport = -scrolloff;
+        self.viewport_line = self.viewport_line.max(min_viewport);
+    }
+    
+    pub fn scroll_viewport_down(&mut self, lines: usize, config: &Config, visible_lines: usize) {
+        if let Some(buffer) = self.current_buffer() {
+            let total_file_lines = buffer.rope.len_lines();
+            let scrolloff = config.scrolloff as usize;
+            
+            self.viewport_line = self.viewport_line.saturating_add(lines as isize);
+            
+            // Don't scroll past the end when accounting for virtual lines at the end
+            let max_viewport = (total_file_lines as isize + scrolloff as isize) - visible_lines as isize;
+            self.viewport_line = self.viewport_line.min(max_viewport);
+        }
+    }
+
+    pub fn scroll_left(&mut self, columns: usize) {
+        self.horizontal_offset = self.horizontal_offset.saturating_sub(columns);
+    }
+
+    pub fn scroll_right(&mut self, columns: usize, content_width: usize) {
+        if let Some(buffer) = self.current_buffer() {
+            let longest_line = buffer.rope.lines().map(|line| line.len_chars()).max().unwrap_or(0);
+            let max_offset = longest_line.saturating_sub(content_width);
+            self.horizontal_offset = (self.horizontal_offset + columns).min(max_offset);
+        }
     }
 
     pub async fn save_current_buffer_with_prompt(&mut self) -> Result<()> {

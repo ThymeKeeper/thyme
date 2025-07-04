@@ -15,7 +15,7 @@ use app::App;
 use crossterm::{
     execute,
     event::{EnableMouseCapture, DisableMouseCapture},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, SetTitle},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
@@ -37,7 +37,12 @@ async fn main() -> Result<()> {
 
     // Cleanup terminal
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(
+        terminal.backend_mut(), 
+        SetTitle(""),  // Restore original terminal title
+        LeaveAlternateScreen, 
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
 
     result

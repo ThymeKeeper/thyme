@@ -100,12 +100,25 @@ impl Ui {
             );
 
             // Convert to ratatui Lines with syntax highlighting
-let lines: Vec<Line> = wrapped_lines.iter().map(|wl| {
+            let lines: Vec<Line> = wrapped_lines.iter().map(|wl| {
+                // Apply horizontal offset only to non-virtual lines when word wrap is disabled
+                let displayed_content = if !config.word_wrap && wl.logical_line != usize::MAX {
+                    // Apply horizontal scrolling
+                    let chars: Vec<char> = wl.content.chars().collect();
+                    if editor.horizontal_offset >= chars.len() {
+                        String::new() // Line is entirely scrolled off to the left
+                    } else {
+                        chars[editor.horizontal_offset..].iter().collect()
+                    }
+                } else {
+                    wl.content.clone()
+                };
+                
                 let mut line = self.apply_syntax_highlighting_wrapped(
-                    wl.content.clone(), 
+                    displayed_content, 
                     buffer, 
                     wl.logical_line, 
-                    wl.line_start_col,
+                    wl.line_start_col + editor.horizontal_offset,
                     config
                 );
                 if wl.logical_line == usize::MAX {
@@ -491,7 +504,15 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
                     // Check if cursor falls within this segment's range (including end position)
                     if cursor_col >= *start_col && cursor_col <= end_col {
                         let visual_col = cursor_col - start_col;
-                        cursor_visual_pos = Some((visual_col, visual_line_idx));
+                        // Apply horizontal offset to cursor position when word wrap is disabled
+                        if !config.word_wrap && editor.horizontal_offset > 0 {
+                            if visual_col >= editor.horizontal_offset {
+                                cursor_visual_pos = Some((visual_col - editor.horizontal_offset, visual_line_idx));
+                            }
+                            // Cursor is scrolled off to the left, don't show it
+                        } else {
+                            cursor_visual_pos = Some((visual_col, visual_line_idx));
+                        }
                     }
                 }
 
