@@ -903,13 +903,12 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
 	            left_text.push_str(" | THEME SELECTION");
 	        }
 
-	        // Right side: cursor position (row/total:column) and preferred column
+	        // Right side: cursor position (row/total:column)
 	        let total_lines = buffer.rope.len_lines();
-	        let right_text = format!("{}/{}:{} [pref:{}]  ", 
+	        let right_text = format!("{}/{}:{}  ", 
 	            buffer.cursor.line + 1, 
 	            total_lines,
-	            buffer.cursor.column + 1,
-	            buffer.cursor.preferred_visual_column
+	            buffer.cursor.column + 1
 	        );
 
 	        // Create layout for left and right alignment
