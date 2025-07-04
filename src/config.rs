@@ -88,6 +88,15 @@ pub struct ThemeColors {
     pub modal_fg: String,
     pub selection_bg: String,
     pub selection_fg: String,
+    
+    // Optional virtual line color (defaults to comment color if not specified)
+    #[serde(default = "default_virtual_line_color")]
+    pub virtual_line: String,
+}
+
+fn default_virtual_line_color() -> String {
+    // This will be overridden in Theme::default() and when loading themes
+    String::new()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,6 +187,7 @@ impl Default for Theme {
                 modal_fg: "#cccccc".to_string(),
                 selection_bg: "#007acc".to_string(),
                 selection_fg: "#ffffff".to_string(),
+                virtual_line: "#6a9955".to_string(), // Same as comment
             },
             styles: ThemeStyles::default(),
         }
@@ -307,7 +317,11 @@ impl Config {
         
         if theme_path.exists() {
             let content = std::fs::read_to_string(theme_path)?;
-            let theme: Theme = toml::from_str(&content)?;
+            let mut theme: Theme = toml::from_str(&content)?;
+            // If virtual_line is empty, default to comment color
+            if theme.colors.virtual_line.is_empty() {
+                theme.colors.virtual_line = theme.colors.comment.clone();
+            }
             self.theme = theme;
             self.theme_name = Some(theme_name.to_string());
             Ok(())
@@ -326,11 +340,15 @@ impl Config {
                 
                 if path.extension().and_then(|s| s.to_str()) == Some("toml") {
                     if let Ok(content) = std::fs::read_to_string(&path) {
-                        if let Ok(theme) = toml::from_str::<Theme>(&content) {
+                        if let Ok(mut theme) = toml::from_str::<Theme>(&content) {
                             if theme.name == display_name {
+                                // If virtual_line is empty, default to comment color
+                                if theme.colors.virtual_line.is_empty() {
+                                    theme.colors.virtual_line = theme.colors.comment.clone();
+                                }
                                 self.theme = theme;
                                 self.theme_name = Some(display_name.to_string());
-                                return Ok(());
+                                return Ok(())
                             }
                         }
                     }
@@ -422,6 +440,7 @@ impl Config {
                 modal_fg: "#f8f8f2".to_string(),
                 selection_bg: "#49483e".to_string(),
                 selection_fg: "#f8f8f2".to_string(),
+                virtual_line: "#75715e".to_string(), // Same as comment
             },
             styles: ThemeStyles::default(),
         };
@@ -463,6 +482,7 @@ impl Config {
                 modal_fg: "#f8f8f2".to_string(),
                 selection_bg: "#44475a".to_string(),
                 selection_fg: "#f8f8f2".to_string(),
+                virtual_line: "#6272a4".to_string(), // Same as comment
             },
             styles: ThemeStyles::default(),
         };
@@ -504,6 +524,7 @@ impl Config {
                 modal_fg: "#839496".to_string(),
                 selection_bg: "#073642".to_string(),
                 selection_fg: "#93a1a1".to_string(),
+                virtual_line: "#586e75".to_string(), // Same as comment
             },
             styles: ThemeStyles::default(),
         };
@@ -545,6 +566,7 @@ impl Config {
                 modal_fg: "#d8dee9".to_string(),
                 selection_bg: "#434c5e".to_string(),
                 selection_fg: "#eceff4".to_string(),
+                virtual_line: "#616e88".to_string(), // Same as comment
             },
             styles: ThemeStyles::default(),
         };

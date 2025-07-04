@@ -27,6 +27,7 @@ punctuation = "#f2f4f8"    # White
 tag = "#ff7eb6"            # Pink
 attribute = "#42be65"      # Green
 normal = "#f2f4f8"         # White
+virtual_line = "#6f6f6f"   # Comment (used for virtual lines)
 
 # UI colors
 status_bar_bg = "#262626"

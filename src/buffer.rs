@@ -110,7 +110,7 @@ impl Buffer {
             self.language = language.to_string();
             self.syntax_highlighter.set_language(language);
             self.needs_syntax_update = true;
-            // Only force immediate update if buffer has content
+            // Force immediate update if buffer has content
             if self.rope.len_chars() > 0 {
                 self.syntax_highlighter.update(&self.rope);
                 self.needs_syntax_update = false;
@@ -189,8 +189,9 @@ impl Buffer {
         self.rope.insert_char(char_idx, c);
         self.cursor.column += 1;
         self.mark_dirty();
-        // Force immediate syntax update for responsive highlighting
-        self.force_syntax_update();
+        
+        // Update syntax highlighting for the current line only
+        self.update_syntax_for_line(self.cursor.line);
     }
 
     pub fn insert_newline(&mut self) {
@@ -257,8 +258,9 @@ impl Buffer {
         self.cursor.column = 0;
         self.cursor.preferred_visual_column = 0;
         self.mark_dirty();
-        // Force immediate syntax update for responsive highlighting
-        self.force_syntax_update();
+        
+        // Handle line insertion in syntax highlighter
+        self.syntax_highlighter.insert_line(&self.rope, self.cursor.line);
     }
 
     pub fn delete_char_backwards(&mut self) {
@@ -322,6 +324,9 @@ impl Buffer {
             self.cursor.column -= 1;
             self.rope.remove(char_idx..char_idx + 1);
             self.mark_dirty();
+            
+            // Update syntax for current line
+            self.update_syntax_for_line(self.cursor.line);
         } else if self.cursor.line > 0 {
             let prev_line_len = self.rope.line(self.cursor.line - 1).len_chars() - 1; // -1 for newline
             let char_idx = self.rope.line_to_char(self.cursor.line) - 1; // Remove newline
@@ -374,13 +379,15 @@ impl Buffer {
             // Update last action time
             self.last_action_time = Some(Instant::now());
             
+            let deleted_line = self.cursor.line;
             self.rope.remove(char_idx..char_idx + 1);
             self.cursor.line -= 1;
             self.cursor.column = prev_line_len;
             self.mark_dirty();
+            
+            // Handle line deletion in syntax highlighter
+            self.syntax_highlighter.delete_line(&self.rope, deleted_line);
         }
-        // Force immediate syntax update for responsive highlighting
-        self.force_syntax_update();
     }
 
     pub fn delete_char_forwards(&mut self) {
@@ -454,6 +461,9 @@ impl Buffer {
 
             self.rope.remove(char_idx..char_idx + 1);
             self.mark_dirty();
+            
+            // Update syntax for current line
+            self.update_syntax_for_line(self.cursor.line);
         } else if self.cursor.line < self.rope.len_lines() - 1 {
             let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column;
 
@@ -507,11 +517,13 @@ impl Buffer {
             // Update last action time
             self.last_action_time = Some(Instant::now());
 
+            let next_line = self.cursor.line + 1;
             self.rope.remove(char_idx..char_idx + 1);
             self.mark_dirty();
+            
+            // Handle line deletion in syntax highlighter
+            self.syntax_highlighter.delete_line(&self.rope, next_line);
         }
-        // Force immediate syntax update for responsive highlighting
-        self.force_syntax_update();
     }
 
     fn delete_selection(&mut self, start: Position, end: Position) {
@@ -520,6 +532,10 @@ impl Buffer {
 
         if start_char_idx < end_char_idx {
             let deleted_text = self.rope.slice(start_char_idx..end_char_idx).to_string();
+            
+            // Count how many lines are being deleted
+            let lines_deleted = end.line - start.line;
+            
             self.rope.remove(start_char_idx..end_char_idx);
 
             let undo_action = UndoAction::DeleteText {
@@ -536,7 +552,16 @@ impl Buffer {
             self.cursor.clear_selection();
 
             self.mark_dirty();
-            self.force_syntax_update();
+            
+            // Handle the deletion in the syntax highlighter
+            if lines_deleted > 0 {
+                // Multiple lines were deleted
+                for _ in 0..lines_deleted {
+                    self.syntax_highlighter.delete_line(&self.rope, start.line + 1);
+                }
+            }
+            // Update the line where deletion occurred
+            self.update_syntax_for_line(start.line);
         }
     }
 
@@ -614,7 +639,7 @@ impl Buffer {
     fn mark_dirty(&mut self) {
         self.dirty = true;
         self.needs_syntax_update = true;
-        self.syntax_highlighter.mark_dirty();
+        self.update_last_change();
     }
     
     /// Update the last change timestamp (used for auto-save)
@@ -679,8 +704,15 @@ impl Buffer {
     // Force syntax highlighting update
     fn force_syntax_update(&mut self) {
         if self.language != "text" {
-            self.syntax_highlighter.mark_dirty();
             self.syntax_highlighter.update(&self.rope);
+            self.needs_syntax_update = false;
+        }
+    }
+    
+    // Update syntax highlighting for a specific line
+    fn update_syntax_for_line(&mut self, line: usize) {
+        if self.language != "text" {
+            self.syntax_highlighter.update_line(&self.rope, line);
             self.needs_syntax_update = false;
         }
     }
@@ -798,24 +830,47 @@ impl Buffer {
         let end_char_idx = self.rope.line_to_char(end.line) + end.column;
 
         if start_char_idx < end_char_idx && end_char_idx <= self.rope.len_chars() {
+            // Count how many lines are being deleted
+            let lines_deleted = end.line - start.line;
+            
             self.rope.remove(start_char_idx..end_char_idx);
             self.mark_dirty();
-            self.force_syntax_update();
+            
+            // Handle the deletion in the syntax highlighter
+            if lines_deleted > 0 {
+                // Multiple lines were deleted
+                for _ in 0..lines_deleted {
+                    self.syntax_highlighter.delete_line(&self.rope, start.line + 1);
+                }
+            }
+            // Update the line where deletion occurred
+            self.update_syntax_for_line(start.line);
         }
     }
     
     /// Insert text at current cursor position (without adding to undo stack)
     fn insert_text_at_cursor(&mut self, text: &str) {
         let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column;
+        
+        // Count newlines to determine how many lines are being inserted
+        let newline_count = text.matches('\n').count();
+        
         self.rope.insert(char_idx, text);
         
         // Update cursor position based on inserted text
-        let newline_count = text.matches('\n').count();
         if newline_count > 0 {
+            // Handle multi-line insertion
+            let lines_before_cursor = self.cursor.line;
             self.cursor.line += newline_count;
+            
             // Find the column position after the last newline
             if let Some(last_newline_pos) = text.rfind('\n') {
                 self.cursor.column = text[last_newline_pos + 1..].chars().count();
+            }
+            
+            // Update syntax highlighting for inserted lines
+            for i in 1..=newline_count {
+                self.syntax_highlighter.insert_line(&self.rope, lines_before_cursor + i);
             }
         } else {
             self.cursor.column += text.chars().count();
@@ -823,7 +878,9 @@ impl Buffer {
         
         self.cursor.preferred_visual_column = self.cursor.column;
         self.mark_dirty();
-        self.force_syntax_update();
+        
+        // Update syntax for the line where insertion ends
+        self.update_syntax_for_line(self.cursor.line);
     }
     
     /// Add an action to the undo stack (for operations like paste/cut that don't group)
@@ -964,6 +1021,4 @@ impl Buffer {
             }
         }
     }
-    
 }
-

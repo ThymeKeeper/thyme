@@ -83,14 +83,19 @@ impl Ui {
             );
 
             // Convert to ratatui Lines with syntax highlighting
-            let lines: Vec<Line> = wrapped_lines.iter().map(|wl| {
-                self.apply_syntax_highlighting_wrapped(
+let lines: Vec<Line> = wrapped_lines.iter().map(|wl| {
+                let mut line = self.apply_syntax_highlighting_wrapped(
                     wl.content.clone(), 
                     buffer, 
                     wl.logical_line, 
                     wl.line_start_col,
                     config
-                )
+                );
+                if wl.logical_line == usize::MAX {
+                    let virtual_color = config.theme.parse_color(&config.theme.colors.virtual_line);
+                    line = line.style(Style::default().fg(virtual_color));
+                }
+                line
             }).collect();
 
             let bg_color = config.theme.parse_color(&config.theme.colors.background);
@@ -407,13 +412,13 @@ impl Ui {
         
         // Add virtual lines at the start if viewport is negative (above file start)
         if editor.viewport_line < 0 {
-            let virtual_lines_to_show = (-editor.viewport_line) as usize;
+let virtual_lines_to_show = (-editor.viewport_line) as usize;
             for _ in 0..virtual_lines_to_show.min(content_height) {
                 wrapped_lines.push(WrappedLine {
-                    content: String::new(), // Empty virtual line
+                    content: "~".to_string(), // Filled virtual line
                     logical_line: usize::MAX, // Mark as virtual
                     line_start_col: 0,
-                    line_end_col: 0,
+                    line_end_col: 1,
                 });
                 current_visual_line += 1;
                 if current_visual_line >= content_height {
@@ -495,10 +500,10 @@ impl Ui {
             
             for _ in 0..virtual_lines_to_add {
                 wrapped_lines.push(WrappedLine {
-                    content: String::new(), // Empty virtual line
+                    content: "~".to_string(), // Filled virtual line
                     logical_line: usize::MAX, // Mark as virtual
                     line_start_col: 0,
-                    line_end_col: 0,
+                    line_end_col: 1,
                 });
             }
         }
@@ -686,12 +691,12 @@ impl Ui {
                 left_text.push_str(" | THEME SELECTION");
             }
 
-            // Right side: cursor position and scroll percentage
-            let scroll_percentage = self.calculate_scroll_percentage(buffer, editor, config);
-            let right_text = format!("{}:{} | {}%  ", 
+            // Right side: cursor position (row/total:column)
+            let total_lines = buffer.rope.len_lines();
+            let right_text = format!("{}/{}:{}  ", 
                 buffer.cursor.line + 1, 
-                buffer.cursor.column + 1, 
-                scroll_percentage
+                total_lines,
+                buffer.cursor.column + 1
             );
 
             // Create layout for left and right alignment
@@ -1089,47 +1094,6 @@ impl Ui {
         } else {
             // Middle lines of selection - entire line is selected
             return true;
-        }
-    }
-    
-    /// Calculate scroll percentage based on visual lines and viewport position
-    fn calculate_scroll_percentage(&self, buffer: &Buffer, _editor: &Editor, config: &Config) -> u8 {
-        let total_file_lines = buffer.rope.len_lines();
-        
-        // Handle empty file or single line
-        if total_file_lines <= 1 {
-            return 100;
-        }
-        
-        let scrolloff = config.scrolloff as usize;
-        let content_width = self.get_content_width(config);
-        
-        // Calculate total visual lines if word wrap is enabled
-        let total_visual_lines = if config.word_wrap {
-            self.calculate_total_visual_lines(buffer, content_width)
-        } else {
-            total_file_lines
-        };
-        
-        // Add virtual lines for scrolloff at start and end
-        let total_visual_lines_with_virtual = total_visual_lines + (scrolloff * 2);
-        
-        // Current cursor position in visual lines
-        let cursor_visual_line = if config.word_wrap {
-            self.calculate_cursor_visual_line(buffer, content_width)
-        } else {
-            buffer.cursor.line
-        };
-        
-        // Adjust cursor position to account for virtual lines at the start
-        let cursor_visual_line_with_virtual = cursor_visual_line + scrolloff;
-        
-        // Calculate percentage
-        if total_visual_lines_with_virtual <= 1 {
-            100
-        } else {
-            let percentage = (cursor_visual_line_with_virtual * 100) / (total_visual_lines_with_virtual - 1);
-            percentage.min(100) as u8
         }
     }
     
