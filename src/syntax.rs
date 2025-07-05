@@ -120,6 +120,12 @@ impl SyntaxHighlighter {
             "yaml" => {
                 self.setup_yaml();
             }
+            "dockerfile" => {
+                self.setup_dockerfile();
+            }
+            "makefile" => {
+                self.setup_makefile();
+            }
             _ => {}
         }
     }
@@ -263,15 +269,8 @@ impl SyntaxHighlighter {
     }
 
     fn setup_json(&mut self) {
-        let keywords = [
-            ("true", TokenType::Constant), 
-            ("false", TokenType::Constant), 
-            ("null", TokenType::Constant),
-        ];
-
-        for (word, token_type) in keywords {
-            self.keywords.insert(word, token_type);
-        }
+        // JSON has no keywords - constants are handled in scan_identifier
+        self.keywords.clear();
 
         self.operators = vec![
             ":", ",", "{", "}", "[", "]",
@@ -400,14 +399,8 @@ impl SyntaxHighlighter {
     }
 
     fn setup_toml(&mut self) {
-        let keywords = [
-            ("true", TokenType::Constant), 
-            ("false", TokenType::Constant),
-        ];
-
-        for (word, token_type) in keywords {
-            self.keywords.insert(word, token_type);
-        }
+        // TOML constants are handled in scan_identifier
+        self.keywords.clear();
 
         self.operators = vec![
             "=", "[", "]", "{", "}", ",", ".",
@@ -415,24 +408,18 @@ impl SyntaxHighlighter {
     }
 
     fn setup_html(&mut self) {
+        // HTML doesn't have keywords - tags are identified contextually
+        self.keywords.clear();
+        
         self.operators = vec![
             "<", ">", "</", "/>", "=",
         ];
     }
 
     fn setup_css(&mut self) {
-        let keywords = [
-            // Common CSS properties
-            ("color", TokenType::Property), ("background", TokenType::Property),
-            ("font", TokenType::Property), ("margin", TokenType::Property),
-            ("padding", TokenType::Property), ("border", TokenType::Property),
-            ("width", TokenType::Property), ("height", TokenType::Property),
-            ("display", TokenType::Property), ("position", TokenType::Property),
-        ];
-
-        for (word, token_type) in keywords {
-            self.keywords.insert(word, token_type);
-        }
+        // CSS doesn't have keywords in the traditional sense
+        // Properties are identified contextually in post-processing
+        self.keywords.clear();
 
         self.operators = vec![
             "{", "}", ":", ";", ",", ".", "#", ">", "+", "~", "*",
@@ -441,6 +428,9 @@ impl SyntaxHighlighter {
     }
 
     fn setup_markdown(&mut self) {
+        // Markdown doesn't have keywords - formatting is identified contextually
+        self.keywords.clear();
+        
         self.operators = vec![
             "#", "*", "_", "-", "+", ">", "`", "[", "]", "(", ")",
             "!", "=", "|",
@@ -531,6 +521,9 @@ impl SyntaxHighlighter {
     }
 
     fn setup_xml(&mut self) {
+        // XML doesn't have keywords - tags are identified contextually
+        self.keywords.clear();
+        
         // XML is similar to HTML
         self.operators = vec![
             "<", ">", "</", "/>", "=", ":", "?",
@@ -538,19 +531,55 @@ impl SyntaxHighlighter {
     }
 
     fn setup_yaml(&mut self) {
-        let keywords = [
-            ("true", TokenType::Constant), ("false", TokenType::Constant),
-            ("null", TokenType::Constant), ("yes", TokenType::Constant),
-            ("no", TokenType::Constant), ("on", TokenType::Constant),
-            ("off", TokenType::Constant),
-        ];
-
-        for (word, token_type) in keywords {
-            self.keywords.insert(word, token_type);
-        }
+        // YAML constants are handled in scan_identifier
+        self.keywords.clear();
 
         self.operators = vec![
             ":", "-", ">", "|", "&", "*", "!", "=", "[", "]", "{", "}",
+        ];
+    }
+    
+    fn setup_dockerfile(&mut self) {
+        // Dockerfile keywords (instructions)
+        let keywords = [
+            ("FROM", TokenType::Keyword), ("RUN", TokenType::Keyword), ("CMD", TokenType::Keyword),
+            ("LABEL", TokenType::Keyword), ("EXPOSE", TokenType::Keyword), ("ENV", TokenType::Keyword),
+            ("ADD", TokenType::Keyword), ("COPY", TokenType::Keyword), ("ENTRYPOINT", TokenType::Keyword),
+            ("VOLUME", TokenType::Keyword), ("USER", TokenType::Keyword), ("WORKDIR", TokenType::Keyword),
+            ("ARG", TokenType::Keyword), ("ONBUILD", TokenType::Keyword), ("STOPSIGNAL", TokenType::Keyword),
+            ("HEALTHCHECK", TokenType::Keyword), ("SHELL", TokenType::Keyword), ("MAINTAINER", TokenType::Keyword),
+            ("AS", TokenType::Keyword),
+        ];
+        
+        for (word, token_type) in keywords {
+            self.keywords.insert(word, token_type);
+        }
+        
+        self.operators = vec![
+            "=", "[", "]", ",", "&&", "||", ";", "|", ">", "<", ">>", "<<",
+        ];
+    }
+    
+    fn setup_makefile(&mut self) {
+        // Makefile keywords
+        let keywords = [
+            ("include", TokenType::Keyword), ("define", TokenType::Keyword), ("endef", TokenType::Keyword),
+            ("ifdef", TokenType::Keyword), ("ifndef", TokenType::Keyword), ("ifeq", TokenType::Keyword),
+            ("ifneq", TokenType::Keyword), ("else", TokenType::Keyword), ("endif", TokenType::Keyword),
+            ("export", TokenType::Keyword), ("override", TokenType::Keyword), ("private", TokenType::Keyword),
+            ("vpath", TokenType::Keyword), (".PHONY", TokenType::Keyword), (".SUFFIXES", TokenType::Keyword),
+            (".DEFAULT", TokenType::Keyword), (".PRECIOUS", TokenType::Keyword), (".INTERMEDIATE", TokenType::Keyword),
+            (".SECONDARY", TokenType::Keyword), (".DELETE_ON_ERROR", TokenType::Keyword),
+            (".IGNORE", TokenType::Keyword), (".SILENT", TokenType::Keyword), (".EXPORT_ALL_VARIABLES", TokenType::Keyword),
+        ];
+        
+        for (word, token_type) in keywords {
+            self.keywords.insert(word, token_type);
+        }
+        
+        self.operators = vec![
+            "=", ":=", "+=", "?=", "!=", ":", ";", "|", "@", "-", "+",
+            "(", ")", "$", "{", "}", "[", "]",
         ];
     }
 
@@ -863,8 +892,9 @@ impl SyntaxHighlighter {
                         current_token_start = i;
                         i += 1;
                     }
-                    // Check for string start (including Python docstrings)
-                    else if ch == '"' || ch == '\'' {
+                    // Check for string start (including Python docstrings and TOML strings)
+                    else if ch == '"' || (ch == '\'' && !matches!(self.language.as_str(), "markdown" | "toml")) {
+                        // TOML uses single quotes for literal strings (no escaping)
                         // Check for Python triple-quoted strings
                         if self.language == "python" && i + 2 < chars.len() && 
                            chars[i + 1] == ch && chars[i + 2] == ch {
@@ -894,11 +924,90 @@ impl SyntaxHighlighter {
                                 start: current_token_start,
                                 end: i,
                             });
+                        }
+                        // Check for TOML multi-line strings
+                        else if self.language == "toml" && i + 2 < chars.len() && 
+                                chars[i + 1] == ch && chars[i + 2] == ch {
+                            // TOML multi-line string
+                            current_token_start = i;
+                            let quote_char = ch;
+                            i += 3; // Skip the triple quotes
+                            
+                            // Find the closing triple quotes
+                            let mut found_end = false;
+                            while i + 2 < chars.len() {
+                                if chars[i] == quote_char && chars[i + 1] == quote_char && chars[i + 2] == quote_char {
+                                    i += 3;
+                                    found_end = true;
+                                    break;
+                                }
+                                i += 1;
+                            }
+                            
+                            if !found_end {
+                                // Unclosed multi-line string
+                                i = chars.len();
+                            }
+                            
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::String,
+                                start: current_token_start,
+                                end: i,
+                            });
                         } else {
                             // Regular string
                             state = ScanState::InString { quote: ch, escaped: false };
                             current_token_start = i;
                             i += 1;
+                        }
+                    }
+                    // TOML literal strings with single quotes
+                    else if ch == '\'' && self.language == "toml" {
+                        // Check for triple-quoted literal string
+                        if i + 2 < chars.len() && chars[i + 1] == '\'' && chars[i + 2] == '\'' {
+                            // TOML multi-line literal string
+                            current_token_start = i;
+                            i += 3; // Skip the triple quotes
+                            
+                            // Find the closing triple quotes (no escape processing)
+                            let mut found_end = false;
+                            while i + 2 < chars.len() {
+                                if chars[i] == '\'' && chars[i + 1] == '\'' && chars[i + 2] == '\'' {
+                                    i += 3;
+                                    found_end = true;
+                                    break;
+                                }
+                                i += 1;
+                            }
+                            
+                            if !found_end {
+                                i = chars.len();
+                            }
+                            
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::String,
+                                start: current_token_start,
+                                end: i,
+                            });
+                        } else {
+                            // Regular literal string (no escaping)
+                            current_token_start = i;
+                            i += 1;
+                            
+                            // Find the closing quote
+                            while i < chars.len() && chars[i] != '\'' {
+                                i += 1;
+                            }
+                            
+                            if i < chars.len() && chars[i] == '\'' {
+                                i += 1;
+                            }
+                            
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::String,
+                                start: current_token_start,
+                                end: i,
+                            });
                         }
                     }
                     // Check for Markdown headers (# Header) - must be at line start
@@ -1089,34 +1198,163 @@ impl SyntaxHighlighter {
                             i += 1;
                         }
                     }
-                    // Check for HTML/XML comments
-                    else if ch == '<' && i + 3 < chars.len() && chars[i + 1] == '!' && 
-                            chars[i + 2] == '-' && chars[i + 3] == '-' && 
-                            (self.language == "html" || self.language == "xml") {
-                        // HTML/XML comment
-                        let comment_start = i;
-                        i += 4;
-                        
-                        // Find the closing -->
-                        let mut found_end = false;
-                        while i + 2 < chars.len() {
-                            if chars[i] == '-' && chars[i + 1] == '-' && chars[i + 2] == '>' {
-                                i += 3;
-                                found_end = true;
-                                break;
+                    // Check for HTML/XML tags
+                    else if ch == '<' && (self.language == "html" || self.language == "xml") {
+                        // Check if this is a comment
+                        if i + 3 < chars.len() && chars[i + 1] == '!' && 
+                           chars[i + 2] == '-' && chars[i + 3] == '-' {
+                            // HTML/XML comment
+                            let comment_start = i;
+                            i += 4;
+                            
+                            // Find the closing -->
+                            let mut found_end = false;
+                            while i + 2 < chars.len() {
+                                if chars[i] == '-' && chars[i + 1] == '-' && chars[i + 2] == '>' {
+                                    i += 3;
+                                    found_end = true;
+                                    break;
+                                }
+                                i += 1;
                             }
-                            i += 1;
+                            
+                            if !found_end {
+                                i = chars.len();
+                            }
+                            
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Comment,
+                                start: comment_start,
+                                end: i,
+                            });
+                        } else {
+                            // Start of a tag
+                            let tag_start = i;
+                            let mut j = i + 1;
+                            
+                            // Skip '/' for closing tags
+                            if j < chars.len() && chars[j] == '/' {
+                                j += 1;
+                            }
+                            
+                            // Read the tag name
+                            let tag_name_start = j;
+                            while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '-' || chars[j] == '_') {
+                                j += 1;
+                            }
+                            let tag_name_end = j;
+                            
+                            // Emit '<' or '</' as operator
+                            if tag_name_start > i + 1 {
+                                // Closing tag
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::Operator,
+                                    start: i,
+                                    end: tag_name_start,
+                                });
+                            } else {
+                                // Opening tag
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::Operator,
+                                    start: i,
+                                    end: i + 1,
+                                });
+                            }
+                            
+                            // Emit tag name
+                            if tag_name_end > tag_name_start {
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::Tag,
+                                    start: tag_name_start,
+                                    end: tag_name_end,
+                                });
+                            }
+                            
+                            // Continue scanning from after tag name
+                            i = tag_name_end;
+                            
+                            // Process attributes until we find '>' or '/>'
+                            while i < chars.len() && chars[i] != '>' {
+                                if chars[i].is_whitespace() {
+                                    i += 1;
+                                } else if chars[i] == '/' && i + 1 < chars.len() && chars[i + 1] == '>' {
+                                    // Self-closing tag
+                                    tokens.push(SyntaxToken {
+                                        token_type: TokenType::Operator,
+                                        start: i,
+                                        end: i + 2,
+                                    });
+                                    i += 2;
+                                    break;
+                                } else if chars[i].is_alphabetic() || chars[i] == '_' {
+                                    // Attribute name
+                                    let attr_start = i;
+                                    while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '-' || chars[i] == '_' || chars[i] == ':') {
+                                        i += 1;
+                                    }
+                                    tokens.push(SyntaxToken {
+                                        token_type: TokenType::Attribute,
+                                        start: attr_start,
+                                        end: i,
+                                    });
+                                    
+                                    // Skip whitespace
+                                    while i < chars.len() && chars[i].is_whitespace() {
+                                        i += 1;
+                                    }
+                                    
+                                    // Check for '='
+                                    if i < chars.len() && chars[i] == '=' {
+                                        tokens.push(SyntaxToken {
+                                            token_type: TokenType::Operator,
+                                            start: i,
+                                            end: i + 1,
+                                        });
+                                        i += 1;
+                                        
+                                        // Skip whitespace
+                                        while i < chars.len() && chars[i].is_whitespace() {
+                                            i += 1;
+                                        }
+                                        
+                                        // Attribute value (string)
+                                        if i < chars.len() && (chars[i] == '"' || chars[i] == '\'') {
+                                            let quote = chars[i];
+                                            let value_start = i;
+                                            i += 1;
+                                            while i < chars.len() && chars[i] != quote {
+                                                if chars[i] == '\\' && i + 1 < chars.len() {
+                                                    i += 2;
+                                                } else {
+                                                    i += 1;
+                                                }
+                                            }
+                                            if i < chars.len() {
+                                                i += 1;
+                                            }
+                                            tokens.push(SyntaxToken {
+                                                token_type: TokenType::String,
+                                                start: value_start,
+                                                end: i,
+                                            });
+                                        }
+                                    }
+                                } else {
+                                    // Unknown character, skip it
+                                    i += 1;
+                                }
+                            }
+                            
+                            // Emit closing '>'
+                            if i < chars.len() && chars[i] == '>' {
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::Operator,
+                                    start: i,
+                                    end: i + 1,
+                                });
+                                i += 1;
+                            }
                         }
-                        
-                        if !found_end {
-                            i = chars.len();
-                        }
-                        
-                        tokens.push(SyntaxToken {
-                            token_type: TokenType::Comment,
-                            start: comment_start,
-                            end: i,
-                        });
                     }
                     else if ch == '#' && (self.language == "python" || self.language == "toml" || 
                                           self.language == "bash" || self.language == "yaml") {
@@ -1301,7 +1539,7 @@ impl SyntaxHighlighter {
                         // Look ahead to see if this is a key
                         let key_start = i;
                         let mut j = i;
-                        while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '-') {
+                        while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '-' || chars[j] == '.') {
                             j += 1;
                         }
                         
@@ -1312,7 +1550,8 @@ impl SyntaxHighlighter {
                         }
                         
                         // Check if followed by colon
-                        if k < chars.len() && chars[k] == ':' {
+                        if k < chars.len() && chars[k] == ':' &&
+                           (k + 1 >= chars.len() || chars[k + 1].is_whitespace() || chars[k + 1] == '\n') {
                             // This is a key
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::Property, // YAML keys use property color
@@ -1327,11 +1566,202 @@ impl SyntaxHighlighter {
                             i = new_i;
                         }
                     }
+                    // Check for TOML keys (similar to YAML)
+                    else if self.language == "toml" && ch.is_alphabetic() {
+                        // Look ahead to see if this is a key
+                        let key_start = i;
+                        let mut j = i;
+                        while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '-' || chars[j] == '.') {
+                            j += 1;
+                        }
+                        
+                        // Skip whitespace
+                        let mut k = j;
+                        while k < chars.len() && chars[k].is_whitespace() && chars[k] != '\n' {
+                            k += 1;
+                        }
+                        
+                        // Check if followed by =
+                        if k < chars.len() && chars[k] == '=' {
+                            // This is a key
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Property,
+                                start: key_start,
+                                end: j,
+                            });
+                            i = j;
+                        } else {
+                            // Regular identifier
+                            let (token, new_i) = self.scan_identifier(&chars, i);
+                            tokens.push(token);
+                            i = new_i;
+                        }
+                    }
                     // Check for identifiers and keywords
                     else if ch.is_alphabetic() || ch == '_' {
+                        // Special handling for HTML/XML - only highlight within tags
+                        if (self.language == "html" || self.language == "xml") {
+                            // Check if we're inside a tag by looking backwards for '<'
+                            let mut inside_tag = false;
+                            let mut j = i;
+                            while j > 0 {
+                                j -= 1;
+                                if chars[j] == '>' {
+                                    break; // We're not in a tag
+                                } else if chars[j] == '<' {
+                                    inside_tag = true;
+                                    break;
+                                }
+                            }
+                            
+                            if !inside_tag {
+                                // Just regular text content, don't highlight
+                                let text_start = i;
+                                while i < chars.len() && !chars[i].is_whitespace() && chars[i] != '<' && chars[i] != '>' {
+                                    i += 1;
+                                }
+                                tokens.push(SyntaxToken {
+                                    token_type: TokenType::Normal,
+                                    start: text_start,
+                                    end: i,
+                                });
+                                continue;
+                            }
+                        }
+                        
                         let (token, new_i) = self.scan_identifier(&chars, i);
                         tokens.push(token);
                         i = new_i;
+                    }
+                    // Check for TOML table headers [table] and [[array]]
+                    else if ch == '[' && self.language == "toml" && 
+                            (i == 0 || (i > 0 && chars[i-1] == '\n')) {
+                        let bracket_start = i;
+                        let mut j = i + 1;
+                        let mut double_bracket = false;
+                        
+                        // Check for [[
+                        if j < chars.len() && chars[j] == '[' {
+                            double_bracket = true;
+                            j += 1;
+                        }
+                        
+                        // Find the closing bracket(s)
+                        let content_start = j;
+                        while j < chars.len() && chars[j] != ']' && chars[j] != '\n' {
+                            j += 1;
+                        }
+                        
+                        if j < chars.len() && chars[j] == ']' {
+                            let content_end = j;
+                            j += 1;
+                            
+                            // For double brackets, check for the second ]
+                            if double_bracket && j < chars.len() && chars[j] == ']' {
+                                j += 1;
+                            }
+                            
+                            // Emit the entire table header as a keyword
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Keyword,
+                                start: bracket_start,
+                                end: j,
+                            });
+                            i = j;
+                        } else {
+                            // Just a regular bracket
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Punctuation,
+                                start: i,
+                                end: i + 1,
+                            });
+                            i += 1;
+                        }
+                    }
+                    // Check for Makefile variables $(VAR) and automatic variables
+                    else if ch == '$' && self.language == "makefile" && i + 1 < chars.len() {
+                        let var_start = i;
+                        i += 1;
+                        
+                        if chars[i] == '(' || chars[i] == '{' {
+                            let close_char = if chars[i] == '(' { ')' } else { '}' };
+                            i += 1;
+                            while i < chars.len() && chars[i] != close_char {
+                                i += 1;
+                            }
+                            if i < chars.len() && chars[i] == close_char {
+                                i += 1;
+                            }
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Variable,
+                                start: var_start,
+                                end: i,
+                            });
+                        } else if chars[i] == '@' || chars[i] == '<' || chars[i] == '^' || 
+                                  chars[i] == '+' || chars[i] == '*' || chars[i] == '?' ||
+                                  chars[i] == '%' || chars[i].is_ascii_digit() {
+                            // Automatic variables like $@, $<, $^, etc.
+                            i += 1;
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Variable,
+                                start: var_start,
+                                end: i,
+                            });
+                        } else {
+                            // Just a $ character
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Operator,
+                                start: var_start,
+                                end: i,
+                            });
+                        }
+                    }
+                    // Check for Bash/Shell variables ($VAR, ${VAR})
+                    else if ch == '$' && self.language == "bash" && i + 1 < chars.len() {
+                        let var_start = i;
+                        i += 1;
+                        
+                        if chars[i] == '{' {
+                            // ${VAR} syntax
+                            i += 1;
+                            while i < chars.len() && chars[i] != '}' && !chars[i].is_whitespace() {
+                                i += 1;
+                            }
+                            if i < chars.len() && chars[i] == '}' {
+                                i += 1;
+                            }
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Variable,
+                                start: var_start,
+                                end: i,
+                            });
+                        } else if chars[i].is_alphabetic() || chars[i] == '_' {
+                            // $VAR syntax
+                            while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                                i += 1;
+                            }
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Variable,
+                                start: var_start,
+                                end: i,
+                            });
+                        } else if chars[i].is_ascii_digit() || chars[i] == '@' || chars[i] == '*' || 
+                                  chars[i] == '#' || chars[i] == '?' || chars[i] == '-' || chars[i] == '$' {
+                            // Special variables like $1, $@, $*, $#, $?, $-, $$
+                            i += 1;
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Variable,
+                                start: var_start,
+                                end: i,
+                            });
+                        } else {
+                            // Just a $ character
+                            tokens.push(SyntaxToken {
+                                token_type: TokenType::Operator,
+                                start: var_start,
+                                end: i,
+                            });
+                        }
                     }
                     // Check for operators and punctuation
                     else {
@@ -1345,7 +1775,8 @@ impl SyntaxHighlighter {
                     if escaped {
                         state = ScanState::InString { quote, escaped: false };
                         i += 1;
-                    } else if ch == '\\' {
+                    } else if ch == '\\' && !(self.language == "toml" && quote == '\'') {
+                        // Escaping not supported in TOML literal strings (single quotes)
                         state = ScanState::InString { quote, escaped: true };
                         i += 1;
                     } else if ch == quote {
@@ -1573,20 +2004,88 @@ impl SyntaxHighlighter {
         
         let word: String = chars[start..i].iter().collect();
         
-        // Check if it's a keyword
-        let token_type = if let Some(token_type) = self.keywords.get(word.as_str()) {
-            token_type.clone()
-        } else if self.language == "sql" {
-            // In SQL, also check case-insensitive match
-            if let Some(token_type) = self.keywords.get(word.to_uppercase().as_str()) {
-                token_type.clone()
-            } else if let Some(token_type) = self.keywords.get(word.to_lowercase().as_str()) {
-                token_type.clone()
-            } else {
-                TokenType::Identifier
+        // Language-specific handling
+        let token_type = match self.language.as_str() {
+            // Markup and data languages - no keyword highlighting
+            "markdown" | "html" | "xml" | "css" => TokenType::Identifier,
+            
+            // JSON - only specific constants
+            "json" => {
+                if matches!(word.as_str(), "true" | "false" | "null") {
+                    TokenType::Constant
+                } else {
+                    TokenType::Identifier
+                }
             }
-        } else {
-            TokenType::Identifier
+            
+            // YAML - more constants but still limited
+            "yaml" => {
+                if matches!(word.as_str(), "true" | "false" | "null" | "yes" | "no" | "on" | "off") {
+                    TokenType::Constant
+                } else {
+                    TokenType::Identifier
+                }
+            }
+            
+            // TOML - similar to JSON
+            "toml" => {
+                if matches!(word.as_str(), "true" | "false") {
+                    TokenType::Constant
+                } else {
+                    TokenType::Identifier
+                }
+            }
+            
+            // SQL - case insensitive keywords
+            "sql" => {
+                if let Some(token_type) = self.keywords.get(word.as_str()) {
+                    token_type.clone()
+                } else if let Some(token_type) = self.keywords.get(word.to_uppercase().as_str()) {
+                    token_type.clone()
+                } else if let Some(token_type) = self.keywords.get(word.to_lowercase().as_str()) {
+                    token_type.clone()
+                } else {
+                    TokenType::Identifier
+                }
+            }
+            
+            // Dockerfile - keywords only at line start
+            "dockerfile" => {
+                if let Some(token_type) = self.keywords.get(word.as_str()) {
+                    // Check if this is at the start of a line (allowing for whitespace)
+                    let mut at_line_start = start == 0;
+                    if !at_line_start && start > 0 {
+                        let mut j = start - 1;
+                        at_line_start = true;
+                        while j > 0 {
+                            if chars[j] == '\n' {
+                                break;
+                            } else if !chars[j].is_whitespace() {
+                                at_line_start = false;
+                                break;
+                            }
+                            j -= 1;
+                        }
+                    }
+                    
+                    if at_line_start {
+                        token_type.clone()
+                    } else {
+                        TokenType::Identifier
+                    }
+                } else {
+                    TokenType::Identifier
+                }
+            }
+            
+            // All other languages - normal keyword lookup
+            _ => {
+                if let Some(token_type) = self.keywords.get(word.as_str()) {
+                    token_type.clone()
+                } else {
+                    TokenType::Identifier
+                }
+            }
         };
         
         (SyntaxToken {
@@ -1620,19 +2119,33 @@ impl SyntaxHighlighter {
     }
 
     fn post_process_tokens(&self, tokens: &mut Vec<SyntaxToken>, chars: &[char]) {
-        // Process tokens to identify functions, types, etc.
+        // Skip most post-processing for markup and data languages
+        if matches!(self.language.as_str(), "markdown" | "html" | "xml" | "json" | "yaml" | "toml" | "css") {
+            // For CSS, do minimal processing for selectors
+            if self.language == "css" {
+                self.post_process_css_tokens(tokens, chars);
+            }
+            // For JSON, ensure property names are styled correctly
+            else if self.language == "json" {
+                self.post_process_json_tokens(tokens, chars);
+            }
+            return;
+        }
+        
+        // Process tokens to identify functions, types, etc. for programming languages
         for i in 0..tokens.len() {
             if tokens[i].token_type == TokenType::Identifier {
                 let token_text: String = chars[tokens[i].start..tokens[i].end].iter().collect();
                 
-                // Check if followed by '(' for function calls
+                // Check if followed by '(' for function calls - not in Markdown
                 if i + 1 < tokens.len() && 
                    (tokens[i + 1].token_type == TokenType::Punctuation || tokens[i + 1].token_type == TokenType::Operator) &&
                    tokens[i + 1].start < chars.len() &&
-                   chars[tokens[i + 1].start] == '(' {
+                   chars[tokens[i + 1].start] == '(' &&
+                   self.language != "markdown" {
                     tokens[i].token_type = TokenType::Function;
                 }
-                // Also check for method calls (preceded by '.')
+                // Also check for method calls (preceded by '.') - not in Markdown
                 else if i > 1 && 
                         (tokens[i - 1].token_type == TokenType::Punctuation || tokens[i - 1].token_type == TokenType::Operator) &&
                         tokens[i - 1].start < chars.len() &&
@@ -1640,11 +2153,13 @@ impl SyntaxHighlighter {
                         i + 1 < tokens.len() && 
                         (tokens[i + 1].token_type == TokenType::Punctuation || tokens[i + 1].token_type == TokenType::Operator) &&
                         tokens[i + 1].start < chars.len() &&
-                        chars[tokens[i + 1].start] == '(' {
+                        chars[tokens[i + 1].start] == '(' &&
+                        self.language != "markdown" {
                     tokens[i].token_type = TokenType::Function;
                 }
-                // Check if it's a type (starts with uppercase)
-                else if token_text.chars().next().unwrap_or('a').is_uppercase() {
+                // Check if it's a type (starts with uppercase) - only for programming languages
+                else if token_text.chars().next().unwrap_or('a').is_uppercase() && 
+                        !matches!(self.language.as_str(), "markdown" | "text" | "json" | "toml" | "yaml" | "html" | "xml") {
                     // In Rust, also check if it might be a constant (all caps with underscores)
                     if self.language == "rust" && token_text.chars().all(|c| c.is_uppercase() || c == '_' || c.is_numeric()) &&
                        token_text.chars().any(|c| c == '_') {
@@ -1653,10 +2168,11 @@ impl SyntaxHighlighter {
                         tokens[i].token_type = TokenType::Type;
                     }
                 }
-                // Check for constants in other languages
+                // Check for constants in programming languages
                 else if token_text.chars().all(|c| c.is_uppercase() || c == '_' || c.is_numeric()) &&
                         token_text.len() > 1 &&
-                        token_text.chars().filter(|&c| c.is_alphabetic()).count() > 0 {
+                        token_text.chars().filter(|&c| c.is_alphabetic()).count() > 0 &&
+                        !matches!(self.language.as_str(), "markdown" | "text" | "json" | "toml" | "yaml" | "html" | "xml") {
                     tokens[i].token_type = TokenType::Constant;
                 }
                 // Check for Rust macros (followed by !)
@@ -1669,8 +2185,8 @@ impl SyntaxHighlighter {
                     // Also mark the ! as part of the macro
                     tokens[i + 1].token_type = TokenType::Function;
                 }
-                // Check for function definitions
-                else if i > 0 && tokens[i - 1].token_type == TokenType::Keyword {
+                // Check for function definitions - not in Markdown
+                else if i > 0 && tokens[i - 1].token_type == TokenType::Keyword && self.language != "markdown" {
                     let prev_token_text: String = chars[tokens[i - 1].start..tokens[i - 1].end].iter().collect();
                     if (self.language == "rust" && prev_token_text == "fn") ||
                        (self.language == "python" && prev_token_text == "def") ||
@@ -1697,6 +2213,52 @@ impl SyntaxHighlighter {
                         // The identifier after AS is often a type in CAST expressions
                         tokens[i].token_type = TokenType::Type;
                     }
+                }
+            }
+        }
+    }
+    
+    /// Post-process CSS tokens to handle selectors and property names
+    fn post_process_css_tokens(&self, tokens: &mut Vec<SyntaxToken>, chars: &[char]) {
+        for i in 0..tokens.len() {
+            if tokens[i].token_type == TokenType::Identifier {
+                // Check if this identifier is followed by a colon (property name)
+                let mut next_non_whitespace = i + 1;
+                while next_non_whitespace < tokens.len() && 
+                      tokens[next_non_whitespace].start < chars.len() &&
+                      chars[tokens[next_non_whitespace].start].is_whitespace() {
+                    next_non_whitespace += 1;
+                }
+                
+                if next_non_whitespace < tokens.len() &&
+                   tokens[next_non_whitespace].token_type == TokenType::Operator &&
+                   tokens[next_non_whitespace].start < chars.len() &&
+                   chars[tokens[next_non_whitespace].start] == ':' {
+                    // This is a property name
+                    tokens[i].token_type = TokenType::Property;
+                }
+            }
+        }
+    }
+    
+    /// Post-process JSON tokens to handle property names
+    fn post_process_json_tokens(&self, tokens: &mut Vec<SyntaxToken>, chars: &[char]) {
+        for i in 0..tokens.len() {
+            if tokens[i].token_type == TokenType::String {
+                // Check if this string is followed by a colon (property name)
+                let mut next_non_whitespace = i + 1;
+                while next_non_whitespace < tokens.len() && 
+                      tokens[next_non_whitespace].start < chars.len() &&
+                      chars[tokens[next_non_whitespace].start].is_whitespace() {
+                    next_non_whitespace += 1;
+                }
+                
+                if next_non_whitespace < tokens.len() &&
+                   tokens[next_non_whitespace].token_type == TokenType::Operator &&
+                   tokens[next_non_whitespace].start < chars.len() &&
+                   chars[tokens[next_non_whitespace].start] == ':' {
+                    // This is a property name in JSON
+                    tokens[i].token_type = TokenType::Property;
                 }
             }
         }

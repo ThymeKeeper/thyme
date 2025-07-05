@@ -847,13 +847,14 @@ impl Buffer {
             self.update_syntax_for_line(start.line);
         }
     }
-    
+
     /// Insert text at current cursor position (without adding to undo stack)
     fn insert_text_at_cursor(&mut self, text: &str) {
         let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column;
         
         // Count newlines to determine how many lines are being inserted
         let newline_count = text.matches('\n').count();
+        let start_line = self.cursor.line;
         
         self.rope.insert(char_idx, text);
         
@@ -879,8 +880,17 @@ impl Buffer {
         self.cursor.preferred_visual_column = self.cursor.column;
         self.mark_dirty();
         
-        // Update syntax for the line where insertion ends
-        self.update_syntax_for_line(self.cursor.line);
+        // Update syntax for all affected lines (from start line to end line)
+        // This is important for multi-line pastes to ensure proper highlighting
+        if newline_count > 0 {
+            // For multi-line insertion, update from start to end
+            for line_idx in start_line..=self.cursor.line {
+                self.update_syntax_for_line(line_idx);
+            }
+        } else {
+            // Single line insertion, just update the current line
+            self.update_syntax_for_line(self.cursor.line);
+        }
     }
     
     /// Add an action to the undo stack (for operations like paste/cut that don't group)
