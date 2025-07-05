@@ -785,6 +785,9 @@ impl Buffer {
     pub fn paste_from_clipboard(&mut self) -> Result<()> {
         let mut clipboard = Clipboard::new()?;
         if let Ok(text) = clipboard.get_text() {
+            // For very large pastes, we'll use optimized insertion
+            let is_large_paste = text.len() > 10000 || text.matches('\n').count() > 100;
+            
             // Handle selection - delete selected text first
             if let Some((start, end)) = self.cursor.get_selection_range() {
                 self.delete_selection(start, end);
@@ -794,7 +797,13 @@ impl Buffer {
             let start_position = Position { line: self.cursor.line, column: self.cursor.column };
             
             // Insert the text at cursor position
-            self.insert_text_at_cursor(&text);
+            if is_large_paste {
+                // Use optimized insertion for large pastes
+                self.insert_text_at_cursor_optimized(&text);
+            } else {
+                // Regular insertion with immediate syntax highlighting
+                self.insert_text_at_cursor(&text);
+            }
 
             // Determine cursor position after paste
             let cursor_after = Position { line: self.cursor.line, column: self.cursor.column };
@@ -880,7 +889,7 @@ impl Buffer {
         self.cursor.preferred_visual_column = self.cursor.column;
         self.mark_dirty();
         
-        // Update syntax for all affected lines (from start line to end line)
+        // Update syntax for all affected lines (from start line to end)
         // This is important for multi-line pastes to ensure proper highlighting
         if newline_count > 0 {
             // For multi-line insertion, update from start to end
@@ -891,6 +900,38 @@ impl Buffer {
             // Single line insertion, just update the current line
             self.update_syntax_for_line(self.cursor.line);
         }
+    }
+    
+    /// Optimized version for large text insertions that defers syntax highlighting
+    fn insert_text_at_cursor_optimized(&mut self, text: &str) {
+        let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column;
+        
+        let newline_count = text.matches('\n').count();
+        let start_line = self.cursor.line;
+        
+        // Insert the text
+        self.rope.insert(char_idx, text);
+        
+        // Update cursor position
+        if newline_count > 0 {
+            self.cursor.line += newline_count;
+            if let Some(last_newline_pos) = text.rfind('\n') {
+                self.cursor.column = text[last_newline_pos + 1..].chars().count();
+            }
+            
+            // Just update line tracking for syntax highlighter
+            for i in 1..=newline_count {
+                self.syntax_highlighter.insert_line(&self.rope, start_line + i);
+            }
+        } else {
+            self.cursor.column += text.chars().count();
+        }
+        
+        self.cursor.preferred_visual_column = self.cursor.column;
+        self.mark_dirty();
+        
+        // Mark that we need syntax update but don't do it now
+        self.needs_syntax_update = true;
     }
     
     /// Add an action to the undo stack (for operations like paste/cut that don't group)

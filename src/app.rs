@@ -13,7 +13,7 @@ use crossterm::{
     execute,
     terminal::SetTitle,
 };
-use ratatui::{backend::Backend, Terminal};
+use ratatui::{backend::Backend, Terminal, widgets::{Paragraph}, layout::Alignment};
 use std::{io::stdout, path::PathBuf, time::Instant};
 
 pub struct App {
@@ -70,7 +70,17 @@ impl App {
             self.check_terminal_resize();
 
             // Draw UI
-            terminal.draw(|f| self.ui.draw(f, &self.editor, &self.config))?;
+            if !self.editor.paste_in_progress {
+                terminal.draw(|f| self.ui.draw(f, &self.editor, &self.config))?;
+            } else if let Some(ref progress) = self.editor.paste_progress {
+                // Show simple progress message
+                terminal.draw(|f| {
+                    let area = f.area();
+                    let msg = Paragraph::new(progress.as_str())
+                        .alignment(Alignment::Center);
+                    f.render_widget(msg, area);
+                })?;
+            }
 
             // Handle events
             if let Some(event) = self.event_handler.next().await? {

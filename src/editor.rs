@@ -28,6 +28,8 @@ pub struct Editor {
     // Filename prompt mode
     pub filename_prompt_mode: bool,
     pub filename_prompt_text: String,
+    pub paste_in_progress: bool,
+    pub paste_progress: Option<String>,
 }
 
 impl Editor {
@@ -48,6 +50,8 @@ impl Editor {
             help_scroll_offset: 0,
             filename_prompt_mode: false,
             filename_prompt_text: String::new(),
+            paste_in_progress: false,
+            paste_progress: None,
         }
     }
 
@@ -1117,11 +1121,36 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
     
     /// Paste text from clipboard
     pub fn paste_from_clipboard(&mut self) -> Result<()> {
-        if let Some(buffer) = self.current_buffer_mut() {
+        // First check if we have a buffer
+        if self.current_buffer().is_none() {
+            return Ok(());
+        }
+        
+        // Get clipboard text before borrowing buffer
+        let mut clipboard = arboard::Clipboard::new()?;
+        let text = match clipboard.get_text() {
+            Ok(text) => text,
+            Err(_) => return Ok(()), // No text in clipboard
+        };
+        
+        // Show progress for large pastes
+        let show_progress = text.len() > 10000;
+        if show_progress {
+            self.paste_in_progress = true;
+            self.paste_progress = Some(format!("Pasting {} characters...", text.len()));
+        }
+        
+        // Now do the actual paste
+        let result = if let Some(buffer) = self.current_buffer_mut() {
             buffer.paste_from_clipboard()
         } else {
             Ok(())
-        }
+        };
+        
+        self.paste_in_progress = false;
+        self.paste_progress = None;
+        
+        result
     }
     
     /// Undo the last action in the current buffer

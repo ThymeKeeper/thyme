@@ -611,6 +611,66 @@ impl SyntaxHighlighter {
             current_state = end_state;
         }
     }
+    
+    /// Optimized update for a range of lines (useful for bulk operations like paste)
+    pub fn update_range(&mut self, rope: &Rope, start_line: usize, end_line: usize) {
+        if self.language == "text" {
+            return;
+        }
+        
+        // Get the state from before the range
+        let start_state = if start_line > 0 {
+            self.line_states.get(&(start_line - 1))
+                .map(|state| state.end_state)
+                .unwrap_or(ScanState::Normal)
+        } else {
+            ScanState::Normal
+        };
+        
+        let mut current_state = start_state;
+        
+        // Update all lines in the range
+        for line_idx in start_line..=end_line.min(rope.len_lines() - 1) {
+            let line_text = rope.line(line_idx).to_string();
+            let (tokens, end_state) = self.scan_line(&line_text, current_state);
+            
+            self.line_states.insert(line_idx, LineState {
+                tokens,
+                end_state,
+            });
+            
+            current_state = end_state;
+        }
+        
+        // Check if we need to continue updating beyond the range
+        if end_line < rope.len_lines() - 1 {
+            let next_line_state = self.line_states.get(&(end_line + 1))
+                .map(|state| state.end_state);
+            
+            if next_line_state != Some(current_state) {
+                // State changed, need to continue updating
+                for line_idx in (end_line + 1)..rope.len_lines() {
+                    let line_text = rope.line(line_idx).to_string();
+                    let (tokens, new_end_state) = self.scan_line(&line_text, current_state);
+                    
+                    let old_state = self.line_states.get(&line_idx)
+                        .map(|state| state.end_state);
+                    
+                    self.line_states.insert(line_idx, LineState {
+                        tokens,
+                        end_state: new_end_state,
+                    });
+                    
+                    // If the state didn't change, we can stop
+                    if old_state == Some(new_end_state) {
+                        break;
+                    }
+                    
+                    current_state = new_end_state;
+                }
+            }
+        }
+    }
 
     fn scan_line(&self, line: &str, start_state: ScanState) -> (Vec<SyntaxToken>, ScanState) {
         let mut tokens = Vec::new();
