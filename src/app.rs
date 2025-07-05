@@ -26,6 +26,7 @@ pub struct App {
     pub last_terminal_size: (u16, u16),
     pub saved_theme: Option<Theme>, // For theme preview
     pub mouse_dragging: bool, // Track mouse drag state
+    pub needs_full_redraw: bool, // Track when full terminal redraw is needed
 }
 
 impl App {
@@ -47,6 +48,7 @@ impl App {
             last_terminal_size,
             saved_theme: None,
             mouse_dragging: false,
+            needs_full_redraw: false,
         })
     }
 
@@ -68,6 +70,11 @@ impl App {
         while self.running {
             // Check for terminal resize
             self.check_terminal_resize();
+            // Force full clear and redraw if needed (e.g., after paragraph jumps)
+            if self.needs_full_redraw {
+                terminal.clear()?;
+                self.needs_full_redraw = false;
+            }
 
             // Draw UI
             if !self.editor.paste_in_progress {
@@ -191,8 +198,14 @@ impl App {
             }
             KeyCode::Home => self.editor.move_cursor_home(),
             KeyCode::End => self.editor.move_cursor_end(),
-            KeyCode::PageUp => self.editor.move_cursor_page_up(&self.config, visible_lines),
-            KeyCode::PageDown => self.editor.move_cursor_page_down(&self.config, visible_lines),
+            KeyCode::PageUp => {
+                self.editor.move_cursor_page_up(&self.config, visible_lines);
+                self.needs_full_redraw = true; // Force redraw after large jump
+            }
+            KeyCode::PageDown => {
+                self.editor.move_cursor_page_down(&self.config, visible_lines);
+                self.needs_full_redraw = true; // Force redraw after large jump
+            }
             KeyCode::Backspace => self.editor.delete_char_backwards(content_width, &self.config, visible_lines),
             KeyCode::Delete => self.editor.delete_char_forwards(),
             KeyCode::Enter => self.editor.insert_newline(&self.config, visible_lines),
@@ -225,9 +238,11 @@ impl App {
             }
             KeyCode::Enter => {
                 self.editor.apply_selected_language();
+                self.needs_full_redraw = true; // Clear any artifacts from modal
             }
             KeyCode::Esc => {
                 self.editor.exit_language_selection_mode();
+                self.needs_full_redraw = true; // Clear any artifacts from modal
             }
             KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 // Allow quit even in language selection mode
@@ -248,6 +263,7 @@ impl App {
                     if actual_index < languages.len() {
                         self.editor.language_selection_index = actual_index;
                         self.editor.apply_selected_language();
+                        self.needs_full_redraw = true; // Clear any artifacts from modal
                     }
                 }
             }
@@ -283,6 +299,7 @@ impl App {
                     }
                     self.editor.exit_theme_selection_mode();
                     self.saved_theme = None; // Clear saved theme
+                    self.needs_full_redraw = true; // Clear any artifacts from modal
                     
                     // Save config with new theme
                     if let Err(e) = self.config.save() {
@@ -296,6 +313,7 @@ impl App {
                     self.config.theme = saved_theme;
                 }
                 self.editor.exit_theme_selection_mode();
+                self.needs_full_redraw = true; // Clear any artifacts from modal
             }
             KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 // Allow quit even in theme selection mode
@@ -327,6 +345,7 @@ impl App {
                             }
                             self.editor.exit_theme_selection_mode();
                             self.saved_theme = None; // Clear saved theme
+                            self.needs_full_redraw = true; // Clear any artifacts from modal
                             
                             // Save config with new theme
                             if let Err(e) = self.config.save() {
@@ -352,6 +371,7 @@ impl App {
             }
             KeyCode::Esc | KeyCode::F(1) | KeyCode::Char('q') => {
                 self.editor.exit_help_mode();
+                self.needs_full_redraw = true; // Clear any artifacts from modal
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 // Scroll up
@@ -480,6 +500,7 @@ impl App {
         // Language selection keybinding
         if key == keybindings.language_selection {
             self.editor.enter_language_selection_mode();
+            self.needs_full_redraw = true; // Clear screen before showing modal
             return Ok(true);
         }
 
@@ -491,12 +512,14 @@ impl App {
             if let Err(e) = self.editor.enter_theme_selection_mode(current_theme_name) {
                 eprintln!("Failed to enter theme selection mode: {}", e);
             }
+            self.needs_full_redraw = true; // Clear screen before showing modal
             return Ok(true);
         }
 
         // Help keybinding
         if key == keybindings.help {
             self.editor.enter_help_mode();
+            self.needs_full_redraw = true; // Clear screen before showing modal
             return Ok(true);
         }
 
@@ -519,11 +542,13 @@ impl App {
         // Paragraph navigation
         if key == keybindings.paragraph_up {
             self.editor.move_to_paragraph_up(&self.config, self.calculate_visible_lines());
+            self.needs_full_redraw = true; // Force full redraw after viewport jump
             return Ok(true);
         }
 
         if key == keybindings.paragraph_down {
             self.editor.move_to_paragraph_down(&self.config, self.calculate_visible_lines());
+            self.needs_full_redraw = true; // Force full redraw after viewport jump
             return Ok(true);
         }
 
@@ -551,6 +576,7 @@ impl App {
             if current_size != self.last_terminal_size {
                 self.reset_preferred_column();
                 self.last_terminal_size = current_size;
+                self.needs_full_redraw = true; // Force full redraw after resize
             }
         }
     }
