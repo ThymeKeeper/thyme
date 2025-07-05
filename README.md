@@ -124,12 +124,5 @@ Please keep in mind:
 - Thyme aims to be a focused text editor
 - Performance matters
 - Code clarity matters more
-- Tests are your friends
-
-## License
-
-MIT - Because sharing is caring
-
----
 
 *Thyme: For when you just want to edit text, but you want to enjoy it.*
