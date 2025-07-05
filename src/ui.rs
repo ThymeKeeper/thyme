@@ -63,7 +63,7 @@ impl Ui {
         
         // Draw help modal if active
         if editor.help_mode {
-            self.draw_help_modal(f, config);
+            self.draw_help_modal(f, editor, config);
         }
     }
 
@@ -169,6 +169,7 @@ impl Ui {
                 Line::from("Welcome to Thyme Editor"),
                 Line::from(""),
                 Line::from("Press Ctrl+O to open a file"),
+                Line::from("Press F1 for help and keybindings"),
                 Line::from(""),
                 Line::from("Supported languages with syntax highlighting:"),
                 Line::from("• Rust (.rs)"),
@@ -183,23 +184,25 @@ impl Ui {
                 Line::from("• Markdown (.md, .markdown)"),
                 Line::from("• YAML (.yaml, .yml)"),
                 Line::from("• XML (.xml)"),
+                Line::from("• C/C++ (.c, .cpp, .h, .hpp)"),
+                Line::from("• And 20+ more languages..."),
                 Line::from(""),
                 Line::from("Features:"),
-                Line::from("• Simple syntax highlighting for 35+ languages"),
-                Line::from("• Customizable color themes"),
+                Line::from("• Syntax highlighting for 35+ languages"),
+                Line::from("• Customizable color themes with live preview"),
                 Line::from("• Word wrapping with proper cursor handling"),
-                Line::from("• Auto-save functionality"),
                 Line::from("• Configurable margins and keybindings"),
-                Line::from("• Language switching without file reload"),
+                Line::from("• Line numbers (absolute/relative)"),
+                Line::from("• Undo/Redo with intelligent grouping"),
+                Line::from("• UTF-8 support"),
                 Line::from(""),
-                Line::from("Keybindings:"),
-                Line::from("• F1/F2: Adjust vertical margins"),
-                Line::from("• F3/F4: Adjust horizontal margins"),
-                Line::from("• F5: Toggle word wrap"),
-                Line::from("• Ctrl+L: Change syntax highlighting language"),
-                Line::from("• Ctrl+T: Change color theme"),
+                Line::from("Quick Start:"),
+                Line::from("• F1: Help"),
                 Line::from("• Ctrl+S: Save"),
                 Line::from("• Ctrl+Q: Quit"),
+                Line::from("• F1: Help"),
+                Line::from("• Ctrl+L: Change language"),
+                Line::from("• Ctrl+T: Change theme"),
             ])
             .block(Block::default()
                 .borders(Borders::ALL)
@@ -938,10 +941,10 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
 	}
 
     // Draw help modal
-    fn draw_help_modal(&self, f: &mut ratatui::Frame, config: &Config) {
+    fn draw_help_modal(&self, f: &mut ratatui::Frame, editor: &Editor, config: &Config) {
         let area = f.area();
         let modal_width = 70;
-        let modal_height = 25;
+        let modal_height = 30;
         
         let modal_area = Rect {
             x: (area.width.saturating_sub(modal_width)) / 2,
@@ -957,12 +960,20 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         let modal_fg = config.theme.parse_color(&config.theme.colors.modal_fg);
         let border_color = config.theme.parse_color(&config.theme.colors.border_active);
 
+        // Full help content
         let help_content = vec![
+            Line::from(""),
+            Line::from("⌨️  HELP NAVIGATION"),
+            Line::from("  ↑/↓ or j/k     Scroll help content"),
+            Line::from("  Page Up/Down   Scroll by page"),
+            Line::from("  Home/End       Jump to top/bottom"),
             Line::from(""),
             Line::from("📝 EDITOR COMMANDS"),
             Line::from("  Ctrl+S         Save file"),
             Line::from("  Ctrl+O         Open file (TODO)"),
             Line::from("  Ctrl+Q         Quit editor"),
+            Line::from("  Ctrl+Z         Undo"),
+            Line::from("  Ctrl+Y         Redo"),
             Line::from(""),
             Line::from("🔤 CURSOR MOVEMENT"),
             Line::from("  Arrow Keys     Move cursor"),
@@ -974,7 +985,8 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             Line::from(""),
             Line::from("✏️  TEXT EDITING"),
             Line::from("  Enter          Insert new line"),
-            Line::from("  Tab            Insert 4 spaces"),
+            Line::from("  Tab            Indent line/selection (4 spaces)"),
+            Line::from("  Shift+Tab      Dedent line/selection"),
             Line::from("  Backspace      Delete character backward"),
             Line::from("  Delete         Delete character forward"),
             Line::from("  Ctrl+A         Select all text"),
@@ -987,32 +999,67 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             Line::from("  Click+Drag     Select text"),
             Line::from("  Shift+Click    Extend selection"),
             Line::from("  Shift+Arrows   Extend selection with keyboard"),
+            Line::from("  Scroll Wheel   Scroll viewport up/down"),
+            Line::from("  Shift+Scroll   Scroll horizontally (when word wrap off)"),
             Line::from(""),
-                Line::from("🎨 CUSTOMIZATION"),
-                Line::from("  F1             Show this help"),
-                Line::from("  F2/F3          Adjust vertical margins"),
-                Line::from("  F4/F5          Adjust horizontal margins"),
-                Line::from("  F6             Toggle word wrap"),
-                Line::from("  F7             Toggle gutter (None/Absolute/Relative)"),
-                Line::from("  Ctrl+L         Change language/syntax"),
-                Line::from("  Ctrl+T         Change color theme"),
+            Line::from("🎨 CUSTOMIZATION"),
+            Line::from("  F1             Show this help"),
+            Line::from("  F2/F3          Increase/Decrease vertical margins"),
+            Line::from("  F4/F5          Increase/Decrease horizontal margins"),
+            Line::from("  F6             Toggle word wrap"),
+            Line::from("  F7             Toggle gutter (None/Absolute/Relative)"),
+            Line::from("  Ctrl+L         Change language/syntax highlighting"),
+            Line::from("  Ctrl+T         Change color theme"),
+            Line::from(""),
+            Line::from("📋 BULLET JOURNAL"),
+            Line::from("  Ctrl+Left      Insert todo bullet (□)"),
+            Line::from("  Ctrl+Down      Insert in-progress bullet (◪)"),
+            Line::from("  Ctrl+Right     Insert done bullet (■)"),
             Line::from(""),
             Line::from("💡 FEATURES"),
             Line::from("  • Syntax highlighting for 35+ languages"),
             Line::from("  • Word wrapping with smart cursor movement"),
-            Line::from("  • Manual save only (Ctrl+S) - no auto-save"),
+            Line::from("  • Manual save only (Ctrl+S) - no auto-save by default"),
             Line::from("  • Configurable margins (0 to any size)"),
-            Line::from("  • Multiple color themes"),
+            Line::from("  • Multiple color themes with live preview"),
+            Line::from("  • Line numbers (absolute/relative)"),
+            Line::from("  • Undo/Redo with intelligent grouping"),
+            Line::from("  • Paragraph navigation"),
+            Line::from("  • UTF-8 support with proper character handling"),
             Line::from(""),
             Line::from(Span::styled("Press ESC, F1, or Q to close this help", Style::default().add_modifier(Modifier::BOLD))),
         ];
 
-        let help_paragraph = Paragraph::new(help_content)
+        // Calculate visible content area (account for borders and title)
+        let content_height = modal_area.height.saturating_sub(2) as usize;
+        let total_lines = help_content.len();
+        
+        // Clamp scroll offset
+        let max_scroll = total_lines.saturating_sub(content_height);
+        let scroll_offset = editor.help_scroll_offset.min(max_scroll);
+        
+        // Get visible lines
+        let visible_end = (scroll_offset + content_height).min(total_lines);
+        let visible_lines: Vec<Line> = help_content[scroll_offset..visible_end].to_vec();
+
+        // Create scroll indicator
+        let scroll_indicator = if total_lines > content_height {
+            let scroll_percentage = if max_scroll > 0 {
+                (scroll_offset as f32 / max_scroll as f32 * 100.0) as u32
+            } else {
+                0
+            };
+            format!(" [{}% - Line {}/{}]", scroll_percentage, scroll_offset + 1, total_lines)
+        } else {
+            String::new()
+        };
+
+        let help_paragraph = Paragraph::new(visible_lines)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(border_color))
-                    .title("Thyme Editor - Help")
+                    .title(format!("Thyme Editor - Help{}", scroll_indicator))
                     .style(Style::default().bg(modal_bg))
             )
             .style(Style::default().fg(modal_fg))

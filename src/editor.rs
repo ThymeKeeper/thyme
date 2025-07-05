@@ -24,6 +24,7 @@ pub struct Editor {
     pub available_themes: Vec<(String, String)>, // (filename, display_name)
     // Help mode
     pub help_mode: bool,
+    pub help_scroll_offset: usize,
     // Filename prompt mode
     pub filename_prompt_mode: bool,
     pub filename_prompt_text: String,
@@ -44,6 +45,7 @@ impl Editor {
             theme_selection_scroll_offset: 0,
             available_themes: Vec::new(),
             help_mode: false,
+            help_scroll_offset: 0,
             filename_prompt_mode: false,
             filename_prompt_text: String::new(),
         }
@@ -971,10 +973,12 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
     // Help mode methods
     pub fn enter_help_mode(&mut self) {
         self.help_mode = true;
+        self.help_scroll_offset = 0;
     }
 
     pub fn exit_help_mode(&mut self) {
         self.help_mode = false;
+        self.help_scroll_offset = 0;
     }
 
     // Filename prompt methods

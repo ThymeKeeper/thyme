@@ -343,6 +343,32 @@ impl App {
             KeyCode::Esc | KeyCode::F(1) | KeyCode::Char('q') => {
                 self.editor.exit_help_mode();
             }
+            KeyCode::Up | KeyCode::Char('k') => {
+                // Scroll up
+                if self.editor.help_scroll_offset > 0 {
+                    self.editor.help_scroll_offset -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                // Scroll down - the actual limit will be checked in the UI drawing code
+                self.editor.help_scroll_offset += 1;
+            }
+            KeyCode::PageUp => {
+                // Scroll up by page
+                self.editor.help_scroll_offset = self.editor.help_scroll_offset.saturating_sub(10);
+            }
+            KeyCode::PageDown => {
+                // Scroll down by page
+                self.editor.help_scroll_offset += 10;
+            }
+            KeyCode::Home => {
+                // Go to top
+                self.editor.help_scroll_offset = 0;
+            }
+            KeyCode::End => {
+                // Go to bottom - will be clamped in UI code
+                self.editor.help_scroll_offset = usize::MAX;
+            }
             _ => {
                 // Ignore other keys in help mode
             }
