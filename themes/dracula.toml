@@ -36,8 +36,13 @@ border = "#6272a4"
 border_active = "#ff79c6"
 modal_bg = "#44475a"
 modal_fg = "#f8f8f2"
-selection_bg = "#ff79c6"
+selection_bg = "#bd93f9"
 selection_fg = "#282a36"
+virtual_line = "#44475a"
+find_match_bg = "#ff79c6"
+find_match_fg = "#282a36"
+find_current_match_bg = "#f1fa8c"
+find_current_match_fg = "#282a36"
 
 [styles]
 # Text styles (bold, italic, underline, etc.)

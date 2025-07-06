@@ -38,6 +38,11 @@ modal_bg = "#334155"
 modal_fg = "#cbd5e1"
 selection_bg = "#60a5fa"
 selection_fg = "#1e293b"
+virtual_line = "#475569"
+find_match_bg = "#fbbf24"
+find_match_fg = "#1e293b"
+find_current_match_bg = "#6ee7b7"
+find_current_match_fg = "#1e293b"
 
 [styles]
 # Text styles (bold, italic, underline, etc.)
