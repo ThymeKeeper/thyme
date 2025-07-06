@@ -91,7 +91,66 @@ impl App {
 
             // Handle events
             if let Some(event) = self.event_handler.next().await? {
-                self.handle_event(event).await?;
+                if self.editor.save_prompt_mode {
+                    // Special handling for save prompt mode
+                    if let Event::Key(key) = event {
+                        match key.code {
+                            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                self.editor.exit_save_prompt_mode();
+                                // If buffer is dirty, enter filename prompt mode if needed
+                                if let Some(buffer) = self.editor.current_buffer() {
+                                    if buffer.dirty {
+                                        if buffer.file_path.is_none() {
+                                            self.editor.enter_filename_prompt_mode();
+                                        } else {
+                                            match self.editor.save_current_buffer().await {
+                                                Ok(()) => self.running = false,
+                                                Err(e) => eprintln!("Failed to save: {}", e),
+                                            }
+                                        }
+                                    } else {
+                                        self.running = false;
+                                    }
+                                } else {
+                                    self.running = false;
+                                }
+                            }
+                            KeyCode::Char('n') | KeyCode::Char('N') => {
+                                self.editor.exit_save_prompt_mode();
+                                self.running = false;
+                            }
+                            KeyCode::Esc => {
+                                self.editor.exit_save_prompt_mode();
+                            }
+                            _ => {} // Ignore other keys while in save prompt mode
+                        }
+                    }
+                } else if self.editor.filename_prompt_mode {
+                    // Special handling for filename prompt mode
+                    if let Event::Key(key) = event {
+                        match key.code {
+                            KeyCode::Char(c) => {
+                                self.editor.add_char_to_filename_prompt(c);
+                            }
+                            KeyCode::Backspace => {
+                                self.editor.backspace_filename_prompt();
+                            }
+                            KeyCode::Enter => {
+                                if let Err(e) = self.editor.save_with_filename().await {
+                                    eprintln!("Failed to save: {}", e);
+                                } else {
+                                    self.update_terminal_title();
+                                }
+                            }
+                            KeyCode::Esc => {
+                                self.editor.exit_filename_prompt_mode();
+                            }
+                            _ => {} // Ignore other keys in filename prompt mode
+                        }
+                    }
+                } else {
+                    self.handle_event(event).await?;
+                }
             }
 
             // Check for auto-save
@@ -151,10 +210,18 @@ impl App {
         // Handle standard editor keys
         match key.code {
             KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if let Some(buffer) = self.editor.current_buffer() {
+                    if buffer.dirty {
+                        // Show confirmation to save before quitting
+                        self.editor.enter_save_prompt_mode();
+                        // The actual save/quit handling happens in the main event loop
+                        return Ok(());
+                    }
+                }
                 self.running = false;
             }
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.editor.save_current_buffer().await?;
+                self.editor.save_current_buffer_with_prompt().await?;
                 self.update_terminal_title();
             }
             KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -231,6 +298,9 @@ impl App {
             KeyCode::Char(c) => self.editor.insert_char(c, content_width),
             _ => {}
         }
+        
+        // Update terminal title after any potential changes
+        self.update_terminal_title();
 
         Ok(())
     }
@@ -741,7 +811,7 @@ impl App {
     
     fn update_terminal_title(&self) {
         if let Some(buffer) = self.editor.current_buffer() {
-            let title = if let Some(path) = &buffer.file_path {
+            let mut title = if let Some(path) = &buffer.file_path {
                 if let Some(filename) = path.file_name() {
                     filename.to_string_lossy().to_string()
                 } else {
@@ -750,6 +820,11 @@ impl App {
             } else {
                 "[No Name]".to_string()
             };
+            
+            // Add asterisk if buffer is dirty
+            if buffer.dirty {
+                title.push('*');
+            }
             
             // Set terminal title
             let _ = execute!(stdout(), SetTitle(title));
@@ -821,6 +896,7 @@ impl App {
         }
         self.editor.move_cursor_left(content_width, &self.config, self.calculate_visible_lines());
     }
+    
     
     fn handle_cursor_movement_right(&mut self, extend_selection: bool, content_width: usize) {
         if let Some(buffer) = self.editor.current_buffer_mut() {

@@ -41,6 +41,8 @@ pub struct KeyBindings {
     // Line movement
     pub move_line_up: SerializableKeyEvent,
     pub move_line_down: SerializableKeyEvent,
+    // Save-as
+    pub save_as: SerializableKeyEvent,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -331,6 +333,10 @@ impl Default for Config {
                 move_line_down: SerializableKeyEvent {
                     code: "Down".to_string(),
                     modifiers: vec!["ctrl".to_string(), "shift".to_string()],
+                },
+                save_as: SerializableKeyEvent {
+                    code: "s".to_string(),
+                    modifiers: vec!["ctrl".to_string(), "alt".to_string()],
                 },
             },
             margins: Margins {

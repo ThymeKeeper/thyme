@@ -86,6 +86,13 @@ impl Ui {
         if editor.help_mode {
             self.draw_help_modal(f, editor, config);
         }
+        
+        // Draw save prompt overlay if active
+        if editor.save_prompt_mode {
+            self.draw_save_prompt_overlay(f, config);
+        } else if editor.filename_prompt_mode {
+            self.draw_filename_prompt_modal(f, editor, config);
+        }
     }
 
     fn draw_editor(&self, f: &mut ratatui::Frame, area: Rect, editor: &Editor, config: &Config) {
@@ -1819,5 +1826,111 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             .style(Style::default().bg(bg_color));
         
         f.render_widget(gutter_paragraph, area);
+    }
+    
+    fn draw_filename_prompt_modal(&self, f: &mut ratatui::Frame, editor: &Editor, config: &Config) {
+        let area = f.area();
+        let modal_width = 50;
+        let modal_height = 5;
+        
+        let modal_area = Rect {
+            x: (area.width.saturating_sub(modal_width)) / 2,
+            y: (area.height.saturating_sub(modal_height)) / 2,
+            width: modal_width.min(area.width.saturating_sub(2)),
+            height: modal_height.min(area.height.saturating_sub(2)),
+        };
+
+        // Clear the background
+        f.render_widget(Clear, modal_area);
+
+        let modal_bg = config.theme.parse_color(&config.theme.colors.modal_bg);
+        let modal_fg = config.theme.parse_color(&config.theme.colors.modal_fg);
+        let border_color = config.theme.parse_color(&config.theme.colors.border_active);
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Save As ")  // Use "Save As" instead of "Filename"
+            .border_style(Style::default().fg(border_color))
+            .style(Style::default().bg(modal_bg));
+
+        let inner_area = block.inner(modal_area);
+
+        let prompt_text = vec![
+            Line::from(""),
+            Line::from(format!("
+            Filename: {}", editor.filename_prompt_text)),
+        ];
+
+        let paragraph = Paragraph::new(prompt_text)
+            .style(Style::default().fg(modal_fg))
+            .alignment(Alignment::Left);
+
+        f.render_widget(block, modal_area);
+        f.render_widget(paragraph, inner_area);
+
+        // Position cursor after "Filename: "
+        if inner_area.height >= 2 {
+            f.set_cursor_position((
+                inner_area.x + 13 + editor.filename_prompt_text.len() as u16,  // 13 is length of "            Filename: "
+                inner_area.y + 1
+            ));
+        }
+    }
+
+    fn draw_save_prompt_overlay(&self, f: &mut ratatui::Frame, config: &Config) {
+        let area = f.area();
+        let modal_width = 50;
+        let modal_height = 10;
+        
+        let modal_area = Rect {
+            x: (area.width.saturating_sub(modal_width)) / 2,
+            y: (area.height.saturating_sub(modal_height)) / 2,
+            width: modal_width.min(area.width.saturating_sub(2)),
+            height: modal_height.min(area.height.saturating_sub(2)),
+        };
+
+        // Clear the background
+        f.render_widget(Clear, modal_area);
+
+        let modal_bg = config.theme.parse_color(&config.theme.colors.modal_bg);
+        let modal_fg = config.theme.parse_color(&config.theme.colors.modal_fg);
+        let border_color = config.theme.parse_color(&config.theme.colors.border_active);
+        let keyword_color = config.theme.parse_color(&config.theme.colors.keyword);
+
+        // Create the prompt content
+        let prompt_text = vec![
+            Line::from(""),
+            Line::from("You have unsaved changes."),
+            Line::from(""),
+            Line::from("Save before quitting?"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Y", Style::default().fg(keyword_color).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Save and quit"),
+            ]),
+            Line::from(vec![
+                Span::styled("N", Style::default().fg(keyword_color).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Quit without saving"),
+            ]),
+            Line::from(vec![
+                Span::styled("Esc", Style::default().fg(keyword_color).add_modifier(Modifier::BOLD)),
+                Span::raw(" - Cancel"),
+            ]),
+        ];
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Save Changes? ")
+            .border_style(Style::default().fg(border_color))
+            .style(Style::default().bg(modal_bg));
+
+        let inner_area = block.inner(modal_area);
+        
+        let paragraph = Paragraph::new(prompt_text)
+            .style(Style::default().fg(modal_fg))
+            .alignment(Alignment::Center);
+
+        f.render_widget(block, modal_area);
+        f.render_widget(paragraph, inner_area);
     }
 }

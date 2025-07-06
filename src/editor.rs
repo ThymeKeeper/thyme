@@ -40,6 +40,8 @@ pub struct Editor {
     pub find_replace_focus: FindReplaceFocus,
     pub find_cursor_pos: usize, // Cursor position within find field
     pub replace_cursor_pos: usize, // Cursor position within replace field
+    // Save prompt mode
+    pub save_prompt_mode: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -77,6 +79,7 @@ impl Editor {
             find_replace_focus: FindReplaceFocus::FindField,
             find_cursor_pos: 0,
             replace_cursor_pos: 0,
+            save_prompt_mode: false,
         }
     }
 
@@ -1668,6 +1671,16 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
                     .min(max_viewport);
             }
         }
+    }
+    
+    /// Enter save prompt mode
+    pub fn enter_save_prompt_mode(&mut self) {
+        self.save_prompt_mode = true;
+    }
+    
+    /// Exit save prompt mode
+    pub fn exit_save_prompt_mode(&mut self) {
+        self.save_prompt_mode = false;
     }
     
     /// Convert mouse coordinates to buffer position
