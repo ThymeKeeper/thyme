@@ -1423,8 +1423,6 @@ impl Buffer {
     
     /// Move selected lines up
     pub fn move_lines_up(&mut self) {
-        let total_lines = self.rope.len_lines();
-        
         if let Some((start, end)) = self.cursor.get_selection_range() {
             // Multiple lines selected - move all of them
             let start_line = start.line;
@@ -1435,20 +1433,31 @@ impl Buffer {
                 return;
             }
             
-            // Get the text of the line above
-            let line_above = self.get_line_text(start_line - 1);
-            let line_above_start = self.rope.line_to_char(start_line - 1);
-            let line_above_end = self.rope.line_to_char(start_line);
+            // Calculate the exact character positions
+            let move_start = self.rope.line_to_char(start_line - 1);
+            let move_end = if end_line + 1 < self.rope.len_lines() {
+                self.rope.line_to_char(end_line + 1)
+            } else {
+                self.rope.len_chars()
+            };
+            
+            // Extract the entire text block to move (line above + selected lines)
+            let text_to_move = self.rope.slice(move_start..move_end).to_string();
+            
+            // Split the text into the line above and the selected lines
+            let line_above_end = self.rope.line_to_char(start_line) - move_start;
+            let line_above = &text_to_move[..line_above_end];
+            let selected_lines = &text_to_move[line_above_end..];
             
             // Start undo group for the entire operation
             self.start_undo_group();
             
-            // Remove the line above
-            self.rope.remove(line_above_start..line_above_end);
+            // Remove the entire block
+            self.rope.remove(move_start..move_end);
             
-            // Insert it after the selected lines
-            let insert_pos = self.rope.line_to_char(end_line); // end_line is now one less due to removal
-            self.rope.insert(insert_pos, &line_above);
+            // Insert in the new order: selected lines first, then line above
+            self.rope.insert(move_start, selected_lines);
+            self.rope.insert(move_start + selected_lines.len(), line_above);
             
             // Update cursor and selection positions
             self.cursor.line -= 1;
@@ -1459,8 +1468,8 @@ impl Buffer {
             // Add to undo stack
             let undo_action = UndoAction::ReplaceText {
                 position: Position { line: start_line - 1, column: 0 },
-                old_text: String::new(), // This is a complex operation, we'll rely on undo snapshots
-                new_text: String::new(),
+                old_text: text_to_move.clone(),
+                new_text: format!("{}{}", selected_lines, line_above),
                 cursor_after: Position { line: self.cursor.line, column: self.cursor.column },
             };
             self.add_undo_state_new_group(undo_action);
@@ -1482,24 +1491,29 @@ impl Buffer {
                 return;
             }
             
-            // Get the text of the current line and the line above
-            let current_line = self.get_line_text(line_num);
-            let line_above = self.get_line_text(line_num - 1);
-            
+            // Calculate exact positions for both lines
             let line_above_start = self.rope.line_to_char(line_num - 1);
-            let current_line_end = if line_num + 1 < total_lines {
+            let current_line_end = if line_num + 1 < self.rope.len_lines() {
                 self.rope.line_to_char(line_num + 1)
             } else {
                 self.rope.len_chars()
             };
             
+            // Extract both lines together
+            let both_lines = self.rope.slice(line_above_start..current_line_end).to_string();
+            
+            // Find where the current line starts within the extracted text
+            let current_line_start_offset = self.rope.line_to_char(line_num) - line_above_start;
+            let line_above = &both_lines[..current_line_start_offset];
+            let current_line = &both_lines[current_line_start_offset..];
+            
             // Start undo group
             self.start_undo_group();
             
-            // Replace both lines
+            // Replace both lines with swapped order
             self.rope.remove(line_above_start..current_line_end);
-            self.rope.insert(line_above_start, &current_line);
-            self.rope.insert(line_above_start + current_line.len(), &line_above);
+            self.rope.insert(line_above_start, current_line);
+            self.rope.insert(line_above_start + current_line.len(), line_above);
             
             // Update cursor position
             self.cursor.line -= 1;
@@ -1507,7 +1521,7 @@ impl Buffer {
             // Add to undo stack
             let undo_action = UndoAction::ReplaceText {
                 position: Position { line: line_num - 1, column: 0 },
-                old_text: format!("{}{}", line_above, current_line),
+                old_text: both_lines.clone(),
                 new_text: format!("{}{}", current_line, line_above),
                 cursor_after: Position { line: self.cursor.line, column: self.cursor.column },
             };
@@ -1524,36 +1538,41 @@ impl Buffer {
     
     /// Move selected lines down
     pub fn move_lines_down(&mut self) {
-        let total_lines = self.rope.len_lines();
-        
         if let Some((start, end)) = self.cursor.get_selection_range() {
             // Multiple lines selected - move all of them
             let start_line = start.line;
             let end_line = end.line;
             
             // Can't move if already at the bottom
-            if end_line >= total_lines - 1 {
+            if end_line >= self.rope.len_lines() - 1 {
                 return;
             }
             
-            // Get the text of the line below
-            let line_below = self.get_line_text(end_line + 1);
-            let line_below_start = self.rope.line_to_char(end_line + 1);
-            let line_below_end = if end_line + 2 < total_lines {
+            // Calculate the exact character positions
+            let move_start = self.rope.line_to_char(start_line);
+            let move_end = if end_line + 2 < self.rope.len_lines() {
                 self.rope.line_to_char(end_line + 2)
             } else {
                 self.rope.len_chars()
             };
             
+            // Extract the entire text block to move (selected lines + line below)
+            let text_to_move = self.rope.slice(move_start..move_end).to_string();
+            
+            // Split the text into selected lines and the line below
+            let line_below_start_offset = self.rope.line_to_char(end_line + 1) - move_start;
+            let selected_lines = &text_to_move[..line_below_start_offset];
+            let line_below = &text_to_move[line_below_start_offset..];
+            
             // Start undo group for the entire operation
             self.start_undo_group();
             
-            // Remove the line below
-            self.rope.remove(line_below_start..line_below_end);
+            // Remove the entire block
+            self.rope.remove(move_start..move_end);
             
-            // Insert it before the selected lines
-            let insert_pos = self.rope.line_to_char(start_line);
-            self.rope.insert(insert_pos, &line_below);
+            // Insert in the new order: line below first, then selected lines
+            self.rope.insert(move_start, line_below);
+            self.rope.insert(move_start + line_below.len(), selected_lines);
             
             // Update cursor and selection positions
             self.cursor.line += 1;
@@ -1564,8 +1583,8 @@ impl Buffer {
             // Add to undo stack
             let undo_action = UndoAction::ReplaceText {
                 position: Position { line: start_line, column: 0 },
-                old_text: String::new(), // This is a complex operation, we'll rely on undo snapshots
-                new_text: String::new(),
+                old_text: text_to_move.clone(),
+                new_text: format!("{}{}", line_below, selected_lines),
                 cursor_after: Position { line: self.cursor.line, column: self.cursor.column },
             };
             self.add_undo_state_new_group(undo_action);
@@ -1583,28 +1602,33 @@ impl Buffer {
             // No selection - just move the current line
             let line_num = self.cursor.line;
             
-            if line_num >= total_lines - 1 {
+            if line_num >= self.rope.len_lines() - 1 {
                 return;
             }
             
-            // Get the text of the current line and the line below
-            let current_line = self.get_line_text(line_num);
-            let line_below = self.get_line_text(line_num + 1);
-            
+            // Calculate exact positions for both lines
             let current_line_start = self.rope.line_to_char(line_num);
-            let line_below_end = if line_num + 2 < total_lines {
+            let line_below_end = if line_num + 2 < self.rope.len_lines() {
                 self.rope.line_to_char(line_num + 2)
             } else {
                 self.rope.len_chars()
             };
             
+            // Extract both lines together
+            let both_lines = self.rope.slice(current_line_start..line_below_end).to_string();
+            
+            // Find where the line below starts within the extracted text
+            let line_below_start_offset = self.rope.line_to_char(line_num + 1) - current_line_start;
+            let current_line = &both_lines[..line_below_start_offset];
+            let line_below = &both_lines[line_below_start_offset..];
+            
             // Start undo group
             self.start_undo_group();
             
-            // Replace both lines
+            // Replace both lines with swapped order
             self.rope.remove(current_line_start..line_below_end);
-            self.rope.insert(current_line_start, &line_below);
-            self.rope.insert(current_line_start + line_below.len(), &current_line);
+            self.rope.insert(current_line_start, line_below);
+            self.rope.insert(current_line_start + line_below.len(), current_line);
             
             // Update cursor position
             self.cursor.line += 1;
@@ -1612,7 +1636,7 @@ impl Buffer {
             // Add to undo stack
             let undo_action = UndoAction::ReplaceText {
                 position: Position { line: line_num, column: 0 },
-                old_text: format!("{}{}", current_line, line_below),
+                old_text: both_lines.clone(),
                 new_text: format!("{}{}", line_below, current_line),
                 cursor_after: Position { line: self.cursor.line, column: self.cursor.column },
             };
