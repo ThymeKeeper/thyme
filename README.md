@@ -1,128 +1,138 @@
 # Thyme
 
-A terminal text editor that respects both your time and your retinas.
-
-## What is Thyme?
-
-Thyme is a modern terminal text editor built in Rust. It's the editor for people who want syntax highlighting that actually works, word wrapping that doesn't make you want to wrap your keyboard around something, and the ability to see your code without squinting.
+A terminal text editor that won't make you cry. Written in Rust.
 
 ## Features
 
-- **35+ language syntax highlighting** - Because code should be colorful
-- **Intelligent word wrapping** - Cursor movement that makes sense, even when your lines don't
-- **Mouse support** - Yes, in the terminal. Welcome to the future
-- **Live theme switching** - Preview themes in real-time instead of editing config files like it's 1999
-- **Configurable margins** - For when you want your code/document centered, like a work of art
-- **Multiple gutter modes** - Absolute, relative, or none. We don't judge
-- **Clean status bar** - Shows what you need, skips what you don't
-
-## Why Thyme?
-
-We're not saying other terminal editors are bad. Nano is everywhere, which is great when you're SSH'd into a server from 2003. Micro has plugins for days, perfect for when you want your text editor to also make coffee. 
-
-Thyme just edits text. But it does it with:
-- Rust's memory safety (no random segfaults)
-- Modern terminal features (your terminal supports true color, why shouldn't your editor?)
-- Reasonable defaults (Ctrl+S saves, imagine that)
-- A codebase you can actually read
+- **Syntax highlighting** for 35+ languages with state machine-based parsing
+- **Customizable themes** with live preview (includes Monokai, Dracula, Solarized Dark, Nord)
+- **Mouse support** including click, drag selection, and even scroll wheel!
+- **Line numbers** with absolute/relative modes
+- **Undo/Redo** with intelligent action grouping
+- **Configurable margins** for distraction-free writing
+- **Word wrapping** with intelligent cursor movement and proper indentation preservation
+- **UTF-8 support** with proper character handling
+- **Clipboard integration** (copy/cut/paste)
+- **Paragraph navigation** for quick document traversal
+- **Bullet journal** shortcuts for task management
 
 ## Installation
 
+### From Source
+
 ```bash
-git clone https://github.com/thymekeeper/thyme
+git clone https://github.com/yourusername/thyme.git
 cd thyme
 cargo build --release
-sudo cp target/release/thyme /usr/local/bin/
+./target/release/thyme
 ```
+
+### Prerequisites
+
+- Rust 1.70 or higher
+- A modern terminal
 
 ## Usage
 
 ```bash
-thyme filename.rs
+# Open a new file
+thyme
+
+# Open an existing file
+thyme myfile.rs
 ```
 
-### Key Bindings
+## Key Bindings
 
-The basics work like you'd expect:
-- `Ctrl+S` - Save
+### File Operations
+- `Ctrl+S` - Save file
 - `Ctrl+Q` - Quit
+
+### Navigation
+- Arrow keys - Move cursor
+- `Home/End` - Beginning/end of line
+- `PageUp/PageDown` - Move by page
+- `Ctrl+PageUp/PageDown` - Jump between paragraphs
+
+### Editing
 - `Ctrl+A` - Select all
 - `Ctrl+C/X/V` - Copy/Cut/Paste
 - `Ctrl+Z/Y` - Undo/Redo
+- `Tab/Shift+Tab` - Indent/Dedent
 
-The fun stuff:
-- `F1` - Help (yes, it actually helps)
+### UI Customization
+- `F1` - Help
 - `F2/F3` - Adjust vertical margins
-- `F4/F5` - Adjust horizontal margins  
+- `F4/F5` - Adjust horizontal margins
 - `F6` - Toggle word wrap
-- `F7` - Cycle gutter modes
-- `Ctrl+L` - Change language syntax
-- `Ctrl+T` - Browse themes
+- `F7` - Cycle line numbers (None → Absolute → Relative)
+- `Ctrl+L` - Language selection
+- `Ctrl+T` - Theme selection
 
-### Mouse Support
-
-Click to move cursor. Drag to select. Scroll to... scroll. Revolutionary, we know.
+### Bullet Journal
+- `Ctrl+←` - Insert todo bullet (□)
+- `Ctrl+↓` - Insert in-progress bullet (◪)
+- `Ctrl+→` - Insert done bullet (■)
 
 ## Configuration
 
-Config lives at `~/.config/thyme/config.toml`. It's TOML because it's readable by humans.
+Configuration is stored in `~/.config/thyme/config.toml`. The editor creates a default configuration on first run.
+
+### Example Configuration
 
 ```toml
-[margins]
-horizontal = 2
-vertical = 1
-
-word_wrap = true
+word_wrap = false
 auto_save_delay_seconds = 0  # 0 = disabled
+scrolloff = 3
+theme_name = "Monokai"
 
-# Customize keybindings if you're feeling adventurous
+[margins]
+vertical = 0
+horizontal = 0
+
 [keybindings]
 help = { code = "F1", modifiers = [] }
+toggle_word_wrap = { code = "F6", modifiers = [] }
+language_selection = { code = "l", modifiers = ["ctrl"] }
 ```
 
-## Themes
+### Themes
 
-Themes live in `~/.config/thyme/themes/`. Ships with:
-- Monokai (the classic)
-- Dracula (for vampires)
-- Solarized Dark (easy on the eyes)
-- Nord (imported from Scandinavia)
+Themes are stored in `~/.config/thyme/themes/`. The editor includes several built-in themes, but more can be added:
+- Default Dark
+- Monokai
+- Dracula
+- Solarized Dark
+- Nord
 
-## Building from Source
+## Supported Languages
 
-Requirements:
-- Rust 1.70+
-- A terminal emulator from this decade
+Syntax highlighting is available for:
 
-```bash
-cargo build --release
-```
+**Systems**: Rust, C, C++, Go  
+**Scripting**: Python, JavaScript, TypeScript, Ruby, Perl, Lua, Bash  
+**Web**: HTML, CSS, Markdown  
+**Data**: JSON, TOML, YAML, XML, SQL  
+**Functional**: Haskell, Clojure, Elixir, Erlang, Elm  
+**Others**: Java, PHP, Swift, Kotlin, Scala, R, Dart, Dockerfile, Makefile
 
-## Philosophy
+Language detection is automatic based on file extension.
 
-Thyme follows the philosophy of "do one thing well, but make sure that thing includes syntax highlighting, word wrapping, mouse support, themes, and configurable margins." 
+## Technical Details
 
-It's a text editor that:
-- Starts fast
-- Responds instantly
-- Doesn't require a PhD in configuration
-- Actually fits in a terminal
-
-## What Thyme Doesn't Do
-
-- Multiple cursors (one cursor, one destiny)
-- Plugin system (it's complete as-is)
-- Integrated terminal (you're already in one)
-- Code completion (that's what language servers are for)
-- Web browsing (looking at you, Emacs)
+- Built with [Ratatui](https://github.com/ratatui-org/ratatui) for terminal UI
+- Uses [Ropey](https://github.com/cessen/ropey) for efficient text rope data structure
+- Implements gap buffer-style editing with piece table characteristics
+- State machine-based syntax highlighting with incremental updates
+- Zero dependencies for core editing operations
 
 ## Contributing
 
-Found a bug? Have a feature request that won't turn Thyme into a different editor? PRs welcome!
+Pull requests welcome. Please ensure:
+- Code follows Rust idioms and passes `cargo clippy`
+- New features include appropriate tests
+- Syntax highlighters use the existing state machine pattern
 
-Please keep in mind:
-- Thyme aims to be a focused text editor
-- Performance matters
-- Code clarity matters more
+## Why "Thyme"?
 
-*Thyme: For when you just want to edit text, but you want to enjoy it.*
+Because everyone needs more thyme for editing.

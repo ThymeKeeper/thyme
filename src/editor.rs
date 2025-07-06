@@ -5,6 +5,7 @@ use crate::{
     config::{Config, Theme},
     text_utils::wrap_line
 };
+use crate::cursor::Position;
 use anyhow::Result;
 use std::path::PathBuf;
 
@@ -30,6 +31,22 @@ pub struct Editor {
     pub filename_prompt_text: String,
     pub paste_in_progress: bool,
     pub paste_progress: Option<String>,
+    // Find/Replace mode
+    pub find_replace_mode: bool,
+    pub find_query: String,
+    pub replace_text: String,
+    pub find_matches: Vec<(usize, usize, usize)>, // (line, start_col, end_col)
+    pub current_match_index: Option<usize>,
+    pub find_replace_focus: FindReplaceFocus,
+    pub find_cursor_pos: usize, // Cursor position within find field
+    pub replace_cursor_pos: usize, // Cursor position within replace field
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FindReplaceFocus {
+    FindField,
+    ReplaceField,
+    Editor,
 }
 
 impl Editor {
@@ -52,6 +69,14 @@ impl Editor {
             filename_prompt_text: String::new(),
             paste_in_progress: false,
             paste_progress: None,
+            find_replace_mode: false,
+            find_query: String::new(),
+            replace_text: String::new(),
+            find_matches: Vec::new(),
+            current_match_index: None,
+            find_replace_focus: FindReplaceFocus::FindField,
+            find_cursor_pos: 0,
+            replace_cursor_pos: 0,
         }
     }
 
@@ -269,6 +294,322 @@ impl Editor {
             Some((&self.available_themes, self.theme_selection_index))
         } else {
             None
+        }
+    }
+
+    // Find/Replace methods
+    pub fn enter_find_replace_mode(&mut self) {
+        self.find_replace_mode = true;
+        self.find_replace_focus = FindReplaceFocus::FindField;
+        
+        // If there's selected text, use it as the initial search query
+        if let Some(buffer) = self.current_buffer() {
+            if let Some((start, end)) = buffer.cursor.get_selection_range() {
+                if start.line == end.line {
+                    let line_text = buffer.get_line_text(start.line);
+                    let start_idx = start.column;
+                    let end_idx = end.column.min(line_text.len());
+                    if start_idx < end_idx {
+                        self.find_query = line_text[start_idx..end_idx].to_string();
+                        self.find_cursor_pos = self.find_query.len();
+                        self.update_find_matches();
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn exit_find_replace_mode(&mut self) {
+        self.find_replace_mode = false;
+        self.find_matches.clear();
+        self.current_match_index = None;
+        self.find_cursor_pos = 0;
+        self.replace_cursor_pos = 0;
+        self.find_query.clear();
+        self.replace_text.clear();
+    }
+
+    pub fn add_char_to_find_query(&mut self, c: char) {
+        if self.find_replace_focus == FindReplaceFocus::FindField {
+            self.find_query.insert(self.find_cursor_pos, c);
+            self.find_cursor_pos += 1;
+            self.update_find_matches();
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            self.replace_text.insert(self.replace_cursor_pos, c);
+            self.replace_cursor_pos += 1;
+        }
+    }
+
+    pub fn backspace_find_replace_field(&mut self) {
+        if self.find_replace_focus == FindReplaceFocus::FindField {
+            if self.find_cursor_pos > 0 {
+                self.find_cursor_pos -= 1;
+                self.find_query.remove(self.find_cursor_pos);
+                self.update_find_matches();
+            }
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            if self.replace_cursor_pos > 0 {
+                self.replace_cursor_pos -= 1;
+                self.replace_text.remove(self.replace_cursor_pos);
+            }
+        }
+    }
+    
+    pub fn move_find_replace_cursor_left(&mut self) {
+        if self.find_replace_focus == FindReplaceFocus::FindField {
+            if self.find_cursor_pos > 0 {
+                self.find_cursor_pos -= 1;
+            }
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            if self.replace_cursor_pos > 0 {
+                self.replace_cursor_pos -= 1;
+            }
+        }
+    }
+    
+    pub fn move_find_replace_cursor_right(&mut self) {
+        if self.find_replace_focus == FindReplaceFocus::FindField {
+            if self.find_cursor_pos < self.find_query.len() {
+                self.find_cursor_pos += 1;
+            }
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            if self.replace_cursor_pos < self.replace_text.len() {
+                self.replace_cursor_pos += 1;
+            }
+        }
+    }
+    
+    pub fn move_find_replace_cursor_home(&mut self) {
+        if self.find_replace_focus == FindReplaceFocus::FindField {
+            self.find_cursor_pos = 0;
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            self.replace_cursor_pos = 0;
+        }
+    }
+    
+    pub fn move_find_replace_cursor_end(&mut self) {
+        if self.find_replace_focus == FindReplaceFocus::FindField {
+            self.find_cursor_pos = self.find_query.len();
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            self.replace_cursor_pos = self.replace_text.len();
+        }
+    }
+
+    pub fn toggle_find_replace_focus(&mut self) {
+        self.find_replace_focus = match self.find_replace_focus {
+            FindReplaceFocus::FindField => FindReplaceFocus::ReplaceField,
+            FindReplaceFocus::ReplaceField => FindReplaceFocus::Editor,
+            FindReplaceFocus::Editor => FindReplaceFocus::FindField,
+        };
+    }
+
+    pub fn update_find_matches(&mut self) {
+        self.find_matches.clear();
+        self.current_match_index = None;
+
+        if self.find_query.is_empty() {
+            return;
+        }
+
+        // Collect matches first to avoid borrowing issues
+        let mut matches = Vec::new();
+        let (cursor_line, cursor_col) = if let Some(buffer) = self.current_buffer() {
+            let total_lines = buffer.rope.len_lines();
+            for line_idx in 0..total_lines {
+                let line_text = buffer.get_line_text(line_idx);
+                let mut search_start = 0;
+                
+                while let Some(match_pos) = line_text[search_start..].find(&self.find_query) {
+                    let absolute_pos = search_start + match_pos;
+                    matches.push((
+                        line_idx,
+                        absolute_pos,
+                        absolute_pos + self.find_query.len()
+                    ));
+                    search_start = absolute_pos + 1;
+                }
+            }
+            (buffer.cursor.line, buffer.cursor.column)
+        } else {
+            return;
+        };
+
+        // Now update self.find_matches
+        self.find_matches = matches;
+
+        // If we have matches, set current to the first one after cursor position
+        if !self.find_matches.is_empty() {
+            // Find the first match after the cursor
+            for (idx, &(line, start_col, _)) in self.find_matches.iter().enumerate() {
+                if line > cursor_line || (line == cursor_line && start_col >= cursor_col) {
+                    self.current_match_index = Some(idx);
+                    break;
+                }
+            }
+            
+            // If no match after cursor, wrap to the beginning
+            if self.current_match_index.is_none() {
+                self.current_match_index = Some(0);
+            }
+        }
+    }
+
+    pub fn find_next(&mut self, config: &Config, visible_lines: usize) {
+        if self.find_matches.is_empty() {
+            return;
+        }
+
+        if let Some(current) = self.current_match_index {
+            self.current_match_index = Some((current + 1) % self.find_matches.len());
+        } else {
+            self.current_match_index = Some(0);
+        }
+
+        self.jump_to_current_match(config, visible_lines);
+    }
+
+    pub fn find_previous(&mut self, config: &Config, visible_lines: usize) {
+        if self.find_matches.is_empty() {
+            return;
+        }
+
+        if let Some(current) = self.current_match_index {
+            self.current_match_index = Some(if current == 0 {
+                self.find_matches.len() - 1
+            } else {
+                current - 1
+            });
+        } else {
+            self.current_match_index = Some(self.find_matches.len() - 1);
+        }
+
+        self.jump_to_current_match(config, visible_lines);
+    }
+
+    fn jump_to_current_match(&mut self, config: &Config, visible_lines: usize) {
+        if let Some(idx) = self.current_match_index {
+            if let Some(&(line, start_col, _)) = self.find_matches.get(idx) {
+                if let Some(buffer) = self.current_buffer_mut() {
+                    buffer.cursor.line = line;
+                    buffer.cursor.column = start_col;
+                    buffer.cursor.preferred_visual_column = start_col;
+                    buffer.cursor.clear_selection();
+                }
+                self.center_viewport_on_cursor(config, visible_lines);
+            }
+        }
+    }
+
+    pub fn replace_current_match(&mut self) -> bool {
+        if let Some(idx) = self.current_match_index {
+            if let Some(&(line, start_col, end_col)) = self.find_matches.get(idx) {
+                // Clone the replacement text to avoid borrowing issues
+                let replacement_text = self.replace_text.clone();
+                let replacement_len = replacement_text.chars().count();
+                
+                if let Some(buffer) = self.current_buffer_mut() {
+                    // Start an undo group for the replace operation
+                    buffer.start_undo_group();
+                    
+                    // Set up selection for the match
+                    buffer.cursor.selection_start = Some(Position { line, column: start_col });
+                    buffer.cursor.line = line;
+                    buffer.cursor.column = end_col;
+                    
+                    // Delete the selected text WITHOUT copying to clipboard
+                    buffer.delete_selection_no_clipboard(Position { line, column: start_col }, Position { line, column: end_col });
+                    
+                    // Insert the replacement text
+                    for ch in replacement_text.chars() {
+                        buffer.insert_char(ch);
+                    }
+                    
+                    // Clear selection after replacement
+                    buffer.cursor.clear_selection();
+                    
+                    // End the undo group
+                    buffer.end_undo_group();
+                    
+                    // Position cursor at the end of the replacement
+                    buffer.cursor.line = line;
+                    buffer.cursor.column = start_col + replacement_len;
+                }
+                
+                // Update find matches after replacement
+                self.update_find_matches();
+                
+                // DON'T automatically jump to the next match here!
+                // The caller (handle_find_replace_key) will call find_next() if needed
+                
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn replace_all_matches(&mut self) -> usize {
+        if self.find_matches.is_empty() || self.find_query.is_empty() {
+            return 0;
+        }
+
+        let mut replaced_count = 0;
+        
+        // Clone the data we need before borrowing the buffer mutably
+        let matches = self.find_matches.clone();
+        let replacement_text = self.replace_text.clone();
+        
+        if let Some(buffer) = self.current_buffer_mut() {
+            let original_cursor = Position {
+                line: buffer.cursor.line,
+                column: buffer.cursor.column,
+            };
+            
+            // Start a new undo group for all replacements
+            buffer.start_undo_group();
+            
+            // Process matches in reverse order to avoid position shifts
+            for &(line, start_col, end_col) in matches.iter().rev() {
+                buffer.cursor.selection_start = Some(Position { line, column: start_col });
+                buffer.cursor.line = line;
+                buffer.cursor.column = end_col;
+                
+                // Delete the selected text WITHOUT copying to clipboard
+                // This will now properly use the active undo group
+                buffer.delete_selection_no_clipboard(Position { line, column: start_col }, Position { line, column: end_col });
+                
+                // Insert the replacement text
+                // These will also be part of the same undo group
+                for ch in replacement_text.chars() {
+                    buffer.insert_char(ch);
+                }
+                replaced_count += 1;
+            }
+            
+            // End the undo group to make all replacements atomic
+            buffer.end_undo_group();
+            
+            // Restore cursor position
+            buffer.cursor.line = original_cursor.line;
+            buffer.cursor.column = original_cursor.column;
+            buffer.cursor.preferred_visual_column = original_cursor.column;
+            buffer.cursor.clear_selection();
+        }
+        
+        // Clear matches after replacements
+        self.find_matches.clear();
+        self.current_match_index = None;
+        
+        replaced_count
+    }
+
+    pub fn get_find_status(&self) -> Option<(usize, usize)> {
+        if self.find_matches.is_empty() {
+            None
+        } else {
+            Some((
+                self.current_match_index.map(|i| i + 1).unwrap_or(0),
+                self.find_matches.len()
+            ))
         }
     }
 
@@ -1155,20 +1496,34 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
     
     /// Undo the last action in the current buffer
     pub fn undo(&mut self) -> bool {
-        if let Some(buffer) = self.current_buffer_mut() {
+        let result = if let Some(buffer) = self.current_buffer_mut() {
             buffer.undo()
         } else {
             false
+        };
+        
+        // If in find/replace mode, update matches after undo
+        if result && self.find_replace_mode {
+            self.update_find_matches();
         }
+        
+        result
     }
     
     /// Redo the last undone action in the current buffer
     pub fn redo(&mut self) -> bool {
-        if let Some(buffer) = self.current_buffer_mut() {
+        let result = if let Some(buffer) = self.current_buffer_mut() {
             buffer.redo()
         } else {
             false
+        };
+        
+        // If in find/replace mode, update matches after redo
+        if result && self.find_replace_mode {
+            self.update_find_matches();
         }
+        
+        result
     }
     
     /// Move cursor to the previous paragraph boundary

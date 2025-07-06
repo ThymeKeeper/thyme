@@ -39,17 +39,38 @@ impl Ui {
     }
 
     pub fn draw(&self, f: &mut ratatui::Frame, editor: &Editor, config: &Config) {
+        // Calculate layout based on whether find/replace is active
+        let constraints = if editor.find_replace_mode {
+            vec![
+                Constraint::Min(0),      // Main editor area
+                Constraint::Length(3),   // Find/replace bar
+                Constraint::Length(1),   // Status line
+            ]
+        } else {
+            vec![
+                Constraint::Min(0),      // Main editor area
+                Constraint::Length(1),   // Status line
+            ]
+        };
+        
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .margin(0)  // Remove outer margin to allow editor to reach edges
-            .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
+            .constraints(constraints)
             .split(f.area());
 
         // Main editor area
         self.draw_editor(f, chunks[0], editor, config);
 
-        // Status line
-        self.draw_status_line(f, chunks[1], editor, config);
+        if editor.find_replace_mode {
+            // Draw find/replace bar
+            self.draw_find_replace_bar(f, chunks[1], editor, config);
+            // Status line
+            self.draw_status_line(f, chunks[2], editor, config);
+        } else {
+            // Status line
+            self.draw_status_line(f, chunks[1], editor, config);
+        }
 
         // Draw language selection modal if active
         if editor.language_selection_mode {
@@ -125,7 +146,8 @@ impl Ui {
                     buffer, 
                     wl.logical_line, 
                     wl.line_start_col + editor.horizontal_offset,
-                    config
+                    config,
+                    editor
                 );
                 if wl.logical_line == usize::MAX {
                     let virtual_color = config.theme.parse_color(&config.theme.colors.virtual_line);
@@ -728,7 +750,8 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         buffer: &Buffer, 
         line_idx: usize, 
         segment_start: usize,
-        config: &Config
+        config: &Config,
+        editor: &Editor
     ) -> Line<'static> {
         let text_chars: Vec<char> = text.chars().collect();
         let text_len = text_chars.len();
@@ -749,10 +772,21 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         // Get selection range if any
         let selection_range = buffer.cursor.get_selection_range();
         
-        // For character-precise selection, we need to split text at selection boundaries
+        // Check if we have find matches to highlight
+        let has_find_matches = editor.find_replace_mode && !editor.find_query.is_empty() && 
+            editor.find_matches.iter().any(|&(match_line, _, _)| match_line == line_idx);
+        
+        // For character-precise selection or find matches, we need to split text at boundaries
         if let Some((sel_start, sel_end)) = selection_range {
             return self.apply_highlighting_with_precise_selection(
-                text, buffer, line_idx, segment_start, sel_start, sel_end, config
+                text, buffer, line_idx, segment_start, sel_start, sel_end, config, editor
+            );
+        } else if has_find_matches {
+            // No selection but we have find matches - create a dummy selection range to trigger precise highlighting
+            let dummy_start = Position { line: usize::MAX, column: usize::MAX };
+            let dummy_end = Position { line: usize::MAX, column: usize::MAX };
+            return self.apply_highlighting_with_precise_selection(
+                text, buffer, line_idx, segment_start, dummy_start, dummy_end, config, editor
             );
         }
         
@@ -941,6 +975,109 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
 	}
 
     // Draw help modal
+    // Draw find/replace bar
+    fn draw_find_replace_bar(&self, f: &mut ratatui::Frame, area: Rect, editor: &Editor, config: &Config) {
+        use crate::editor::FindReplaceFocus;
+        
+        let border_color = config.theme.parse_color(&config.theme.colors.border_active);
+        let bg_color = config.theme.parse_color(&config.theme.colors.modal_bg);
+        let fg_color = config.theme.parse_color(&config.theme.colors.modal_fg);
+        let selection_bg = config.theme.parse_color(&config.theme.colors.selection_bg);
+        let selection_fg = config.theme.parse_color(&config.theme.colors.selection_fg);
+        
+        let block = Block::default()
+            .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
+            .border_style(Style::default().fg(border_color))
+            .style(Style::default().bg(bg_color));
+        
+        f.render_widget(block, area);
+        
+        let inner_area = area.inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        });
+        
+        let sections = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),  // Find section
+                Constraint::Percentage(50),  // Replace section
+            ])
+            .split(inner_area);
+        
+        // Draw find field
+        let find_label = "Find: ";
+        let find_content = format!("{}{}", find_label, editor.find_query);
+        let find_style = if editor.find_replace_focus == FindReplaceFocus::FindField {
+            Style::default().bg(selection_bg).fg(selection_fg)
+        } else {
+            Style::default().fg(fg_color)
+        };
+        
+        let find_paragraph = Paragraph::new(find_content)
+            .style(find_style)
+            .alignment(Alignment::Left);
+        
+        f.render_widget(find_paragraph, sections[0]);
+        
+        // Draw replace field
+        let replace_label = "Replace: ";
+        let replace_content = format!("{}{}", replace_label, editor.replace_text);
+        let replace_style = if editor.find_replace_focus == FindReplaceFocus::ReplaceField {
+            Style::default().bg(selection_bg).fg(selection_fg)
+        } else {
+            Style::default().fg(fg_color)
+        };
+        
+        let replace_paragraph = Paragraph::new(replace_content)
+            .style(replace_style)
+            .alignment(Alignment::Left);
+        
+        f.render_widget(replace_paragraph, sections[1]);
+        
+        // Show match count
+        if let Some((current, total)) = editor.get_find_status() {
+            let match_info = if total > 0 {
+                format!(" {}/{} ", current, total)
+            } else {
+                " No matches ".to_string()
+            };
+            
+            let match_info_width = match_info.len() as u16;
+            let match_info_area = Rect {
+                x: area.x + area.width - match_info_width - 1,
+                y: inner_area.y,
+                width: match_info_width,
+                height: 1,
+            };
+            
+            let match_paragraph = Paragraph::new(match_info)
+                .style(Style::default().fg(fg_color))
+                .alignment(Alignment::Right);
+            
+            f.render_widget(match_paragraph, match_info_area);
+        }
+        
+        // Set cursor position based on focus
+        match editor.find_replace_focus {
+            FindReplaceFocus::FindField => {
+                let cursor_x = sections[0].x + find_label.len() as u16 + editor.find_cursor_pos as u16;
+                if cursor_x < sections[0].x + sections[0].width {
+                    f.set_cursor_position((cursor_x, sections[0].y));
+                }
+            }
+            FindReplaceFocus::ReplaceField => {
+                let cursor_x = sections[1].x + replace_label.len() as u16 + editor.replace_cursor_pos as u16;
+                if cursor_x < sections[1].x + sections[1].width {
+                    f.set_cursor_position((cursor_x, sections[1].y));
+                }
+            }
+            FindReplaceFocus::Editor => {
+                // Cursor will be set by the editor drawing code
+            }
+        }
+    }
+
     fn draw_help_modal(&self, f: &mut ratatui::Frame, editor: &Editor, config: &Config) {
         let area = f.area();
         let modal_width = 70;
@@ -974,6 +1111,14 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             Line::from("  Ctrl+Q         Quit editor"),
             Line::from("  Ctrl+Z         Undo"),
             Line::from("  Ctrl+Y         Redo"),
+            Line::from(""),
+            Line::from("🔍 FIND & REPLACE"),
+            Line::from("  Ctrl+F         Open find/replace (or next match)"),
+            Line::from("  Ctrl+Alt+F     Previous match"),
+            Line::from("  Ctrl+H         Replace current match"),
+            Line::from("  Ctrl+Alt+H     Replace all matches"),
+            Line::from("  Tab            Toggle between find/replace/editor"),
+            Line::from("  Esc            Close find/replace"),
             Line::from(""),
             Line::from("🔤 CURSOR MOVEMENT"),
             Line::from("  Arrow Keys     Move cursor"),
@@ -1124,6 +1269,7 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         sel_start: Position,
         sel_end: Position,
         config: &Config,
+        editor: &Editor,
     ) -> Line<'static> {
         let text_chars: Vec<char> = text.chars().collect();
         let text_len = text_chars.len();
@@ -1168,6 +1314,20 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         for boundary in selection_boundaries {
             if boundary >= segment_start && boundary <= segment_end {
                 all_boundaries.push(boundary - segment_start + indent_offset);
+            }
+        }
+        
+        // Add find match boundaries if in find mode
+        if editor.find_replace_mode && !editor.find_query.is_empty() {
+            for &(match_line, match_start, match_end) in &editor.find_matches {
+                if match_line == line_idx {
+                    if match_start >= segment_start && match_start <= segment_end {
+                        all_boundaries.push(match_start - segment_start + indent_offset);
+                    }
+                    if match_end >= segment_start && match_end <= segment_end {
+                        all_boundaries.push(match_end - segment_start + indent_offset);
+                    }
+                }
             }
         }
         
@@ -1223,7 +1383,7 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
                 // Find the appropriate token style for this segment
                 let style = self.get_segment_style(
                     &tokens, original_start, original_end,
-                    is_selected, config
+                    is_selected, config, line_idx, editor
                 );
                 
                 spans.push(Span::styled(segment_text, style));
@@ -1290,6 +1450,11 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         sel_start: Position,
         sel_end: Position,
     ) -> bool {
+        // Check for dummy selection (used when we only have find matches)
+        if sel_start.line == usize::MAX && sel_end.line == usize::MAX {
+            return false;
+        }
+        
         // Check if line is within selection range
         if line_idx < sel_start.line || line_idx > sel_end.line {
             return false;
@@ -1325,7 +1490,33 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         end_col: usize,
         is_selected: bool,
         config: &Config,
+        line_idx: usize,
+        editor: &Editor,
     ) -> Style {
+        // Check if this segment is a find match
+        let is_find_match = if editor.find_replace_mode && !editor.find_query.is_empty() {
+            editor.find_matches.iter().any(|&(match_line, match_start, match_end)| {
+                match_line == line_idx && 
+                start_col >= match_start && 
+                end_col <= match_end
+            })
+        } else {
+            false
+        };
+        
+        // Check if this segment is the current find match
+        let is_current_match = if let Some(current_idx) = editor.current_match_index {
+            editor.find_matches.get(current_idx)
+                .map(|&(match_line, match_start, match_end)| {
+                    match_line == line_idx && 
+                    start_col >= match_start && 
+                    end_col <= match_end
+                })
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        
         // Find the token that contains this segment
         let token_style = tokens.iter()
             .find(|token| token.start <= start_col && token.end >= end_col)
@@ -1335,10 +1526,19 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
                 Style::default().fg(normal_color)
             });
         
+        // Apply styles in order of priority: selection > current match > match > token
         if is_selected {
             let selection_bg = config.theme.parse_color(&config.theme.colors.selection_bg);
             let selection_fg = config.theme.parse_color(&config.theme.colors.selection_fg);
             Style::default().bg(selection_bg).fg(selection_fg)
+        } else if is_current_match {
+            let match_bg = config.theme.parse_color(&config.theme.colors.find_current_match_bg);
+            let match_fg = config.theme.parse_color(&config.theme.colors.find_current_match_fg);
+            Style::default().bg(match_bg).fg(match_fg)
+        } else if is_find_match {
+            let match_bg = config.theme.parse_color(&config.theme.colors.find_match_bg);
+            let match_fg = config.theme.parse_color(&config.theme.colors.find_match_fg);
+            Style::default().bg(match_bg).fg(match_fg)
         } else {
             token_style
         }

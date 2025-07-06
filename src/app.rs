@@ -119,6 +119,11 @@ impl App {
     }
 
     async fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
+        // Handle find/replace mode first
+        if self.editor.find_replace_mode {
+            return self.handle_find_replace_key(key).await;
+        }
+        
         // Handle help mode first
         if self.editor.help_mode {
             return self.handle_help_key(key).await;
@@ -179,6 +184,9 @@ impl App {
             KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.editor.redo();
             }
+            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.editor.enter_find_replace_mode();
+            }
             // Arrow keys with optional Shift for selection
             KeyCode::Left => {
                 let extend_selection = key.modifiers.contains(KeyModifiers::SHIFT);
@@ -224,6 +232,137 @@ impl App {
             _ => {}
         }
 
+        Ok(())
+    }
+
+    // Handle keys when in find/replace mode
+    async fn handle_find_replace_key(&mut self, key: KeyEvent) -> Result<()> {
+        use crate::editor::FindReplaceFocus;
+        
+        match key.code {
+            KeyCode::Esc => {
+                self.editor.exit_find_replace_mode();
+                self.needs_full_redraw = true;
+            }
+            
+            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if key.modifiers.contains(KeyModifiers::ALT) {
+                    self.editor.find_previous(&self.config, self.calculate_visible_lines());
+                } else {
+                    self.editor.find_next(&self.config, self.calculate_visible_lines());
+                }
+            }
+            
+            KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if key.modifiers.contains(KeyModifiers::ALT) {
+                    self.editor.replace_all_matches();
+                } else {
+                    self.editor.replace_current_match();
+                    // DON'T call find_next here - replace_current_match already positions us correctly
+                }
+            }
+            
+            KeyCode::Tab => {
+                self.editor.toggle_find_replace_focus();
+            }
+            
+            KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.running = false;
+            }
+            
+            KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.editor.undo();
+            }
+            
+            KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.editor.redo();
+            }
+            
+            KeyCode::Char(c) => {
+                if self.editor.find_replace_focus != FindReplaceFocus::Editor {
+                    self.editor.add_char_to_find_query(c);
+                } else {
+                    self.editor.insert_char(c, self.calculate_content_width());
+                }
+            }
+            
+            KeyCode::Backspace => {
+                if self.editor.find_replace_focus != FindReplaceFocus::Editor {
+                    self.editor.backspace_find_replace_field();
+                } else {
+                    self.editor.delete_char_backwards(
+                        self.calculate_content_width(), 
+                        &self.config, 
+                        self.calculate_visible_lines()
+                    );
+                }
+            }
+            
+            KeyCode::Enter => {
+                if self.editor.find_replace_focus == FindReplaceFocus::FindField {
+                    self.editor.find_next(&self.config, self.calculate_visible_lines());
+                    self.editor.find_replace_focus = FindReplaceFocus::Editor;
+                } else if self.editor.find_replace_focus == FindReplaceFocus::ReplaceField {
+                    self.editor.replace_current_match();
+                    // DON'T call find_next here either - replace_current_match positions us correctly
+                } else {
+                    self.editor.insert_newline(&self.config, self.calculate_visible_lines());
+                }
+            }
+            
+            KeyCode::Left => {
+                if self.editor.find_replace_focus == FindReplaceFocus::Editor {
+                    self.handle_cursor_movement_left(key.modifiers.contains(KeyModifiers::SHIFT), self.calculate_content_width());
+                } else {
+                    self.editor.move_find_replace_cursor_left();
+                }
+            }
+            
+            KeyCode::Right => {
+                if self.editor.find_replace_focus == FindReplaceFocus::Editor {
+                    self.handle_cursor_movement_right(key.modifiers.contains(KeyModifiers::SHIFT), self.calculate_content_width());
+                } else {
+                    self.editor.move_find_replace_cursor_right();
+                }
+            }
+            
+            KeyCode::Home => {
+                if self.editor.find_replace_focus == FindReplaceFocus::Editor {
+                    self.editor.move_cursor_home();
+                } else {
+                    self.editor.move_find_replace_cursor_home();
+                }
+            }
+            
+            KeyCode::End => {
+                if self.editor.find_replace_focus == FindReplaceFocus::Editor {
+                    self.editor.move_cursor_end();
+                } else {
+                    self.editor.move_find_replace_cursor_end();
+                }
+            }
+            
+            KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown => {
+                if self.editor.find_replace_focus == FindReplaceFocus::Editor {
+                    match key.code {
+                        KeyCode::Up => self.handle_cursor_movement_up(key.modifiers.contains(KeyModifiers::SHIFT), self.calculate_content_width()),
+                        KeyCode::Down => self.handle_cursor_movement_down(key.modifiers.contains(KeyModifiers::SHIFT), self.calculate_content_width()),
+                        KeyCode::PageUp => {
+                            self.editor.move_cursor_page_up(&self.config, self.calculate_visible_lines());
+                            self.needs_full_redraw = true;
+                        }
+                        KeyCode::PageDown => {
+                            self.editor.move_cursor_page_down(&self.config, self.calculate_visible_lines());
+                            self.needs_full_redraw = true;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            
+            _ => {}
+        }
+        
         Ok(())
     }
 

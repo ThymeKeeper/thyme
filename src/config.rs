@@ -126,11 +126,37 @@ pub struct ThemeColors {
     // Optional virtual line color (defaults to comment color if not specified)
     #[serde(default = "default_virtual_line_color")]
     pub virtual_line: String,
+    
+    // Find/Replace highlighting
+    #[serde(default = "default_find_match_bg")]
+    pub find_match_bg: String,
+    #[serde(default = "default_find_match_fg")]
+    pub find_match_fg: String,
+    #[serde(default = "default_find_current_match_bg")]
+    pub find_current_match_bg: String,
+    #[serde(default = "default_find_current_match_fg")]
+    pub find_current_match_fg: String,
 }
 
 fn default_virtual_line_color() -> String {
     // This will be overridden in Theme::default() and when loading themes
     String::new()
+}
+
+fn default_find_match_bg() -> String {
+    "#4a4a00".to_string() // Dark yellow background
+}
+
+fn default_find_match_fg() -> String {
+    "#ffffff".to_string() // White foreground
+}
+
+fn default_find_current_match_bg() -> String {
+    "#ffff00".to_string() // Bright yellow background for current match
+}
+
+fn default_find_current_match_fg() -> String {
+    "#000000".to_string() // Black foreground for contrast
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -222,6 +248,10 @@ impl Default for Theme {
                 selection_bg: "#4a5a6a".to_string(),    // Muted selection in UI
                 selection_fg: "#d0d0d0".to_string(),    // Muted white
                 virtual_line: "#2a2a2a".to_string(),    // Very subtle virtual lines
+                find_match_bg: "#4a4a00".to_string(),   // Dark yellow background for find matches
+                find_match_fg: "#ffffff".to_string(),   // White text for find matches
+                find_current_match_bg: "#aaaa00".to_string(), // Bright yellow for current match
+                find_current_match_fg: "#000000".to_string(), // Black text for contrast
             },
             styles: ThemeStyles::default(),
         }
@@ -502,6 +532,10 @@ impl Config {
                 selection_bg: "#49483e".to_string(),
                 selection_fg: "#f8f8f2".to_string(),
                 virtual_line: "#49483e".to_string(), // Darker than comment, matches selection
+                find_match_bg: "#75715e".to_string(), // Comment color as background
+                find_match_fg: "#f8f8f2".to_string(),
+                find_current_match_bg: "#e6db74".to_string(), // String color (yellow)
+                find_current_match_fg: "#272822".to_string(), // Background color
             },
             styles: ThemeStyles::default(),
         };
@@ -544,6 +578,10 @@ impl Config {
                 selection_bg: "#44475a".to_string(),
                 selection_fg: "#f8f8f2".to_string(),
                 virtual_line: "#44475a".to_string(), // Darker than comment, matches current line
+                find_match_bg: "#6272a4".to_string(), // Comment color as background
+                find_match_fg: "#f8f8f2".to_string(),
+                find_current_match_bg: "#f1fa8c".to_string(), // String color (yellow)
+                find_current_match_fg: "#282a36".to_string(), // Background color
             },
             styles: ThemeStyles::default(),
         };
@@ -586,6 +624,10 @@ impl Config {
                 selection_bg: "#073642".to_string(),
                 selection_fg: "#93a1a1".to_string(),
                 virtual_line: "#073642".to_string(), // Darker than comment, matches current line
+                find_match_bg: "#586e75".to_string(), // Comment color as background
+                find_match_fg: "#eee8d5".to_string(), // Light text
+                find_current_match_bg: "#b58900".to_string(), // Type color (yellow)
+                find_current_match_fg: "#002b36".to_string(), // Background color
             },
             styles: ThemeStyles::default(),
         };
@@ -628,6 +670,10 @@ impl Config {
                 selection_bg: "#434c5e".to_string(),
                 selection_fg: "#eceff4".to_string(),
                 virtual_line: "#2e3440".to_string(), // Darker than comment, matches current line
+                find_match_bg: "#616e88".to_string(), // Comment color as background
+                find_match_fg: "#eceff4".to_string(),
+                find_current_match_bg: "#ebcb8b".to_string(), // Yellow/orange
+                find_current_match_fg: "#2e3440".to_string(), // Dark background
             },
             styles: ThemeStyles::default(),
         };

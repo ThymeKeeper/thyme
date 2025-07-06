@@ -700,10 +700,7 @@ impl SyntaxHighlighter {
         while i < chars.len() {
             iterations += 1;
             if iterations > max_iterations {
-                // Detected potential infinite loop
-                eprintln!("Warning: Infinite loop detected in syntax highlighter for language '{}'", self.language);
-                eprintln!("Line content: {:?}", line);
-                eprintln!("Current state: {:?}, position: {}/{}", state, i, chars.len());
+                // Detected potential infinite loop - silently break to prevent hanging
                 break;
             }
             

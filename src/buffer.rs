@@ -36,6 +36,7 @@ pub struct UndoState {
     pub action: UndoAction,
     pub selection_before: Option<(Position, Position)>,
     pub selection_after: Option<(Position, Position)>,
+    pub group_id: Option<usize>, // Group ID for grouping related actions
 }
 
 pub struct Buffer {
@@ -51,6 +52,8 @@ pub struct Buffer {
     redo_stack: Vec<UndoState>,
     max_undo_stack_size: usize,
     last_action_time: Option<Instant>,
+    undo_grouping_active: bool,
+    current_undo_group_id: usize,
 }
 
 impl Buffer {
@@ -71,6 +74,8 @@ impl Buffer {
             redo_stack: Vec::new(),
             max_undo_stack_size: 1000,
             last_action_time: None,
+            undo_grouping_active: false,
+            current_undo_group_id: 0,
         }
     }
 
@@ -95,6 +100,8 @@ impl Buffer {
             redo_stack: Vec::new(),
             max_undo_stack_size: 1000,
             last_action_time: None,
+            undo_grouping_active: false,
+            current_undo_group_id: 0,
         };
 
         // Force initial syntax highlighting
@@ -136,8 +143,12 @@ impl Buffer {
         
         let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column;
         
-        // Check if we should start a new undo group (2+ seconds since last action)
-        let should_start_new_group = if let Some(last_time) = self.last_action_time {
+        // Check if we should start a new undo group
+        // If undo_grouping_active is true, we're in an explicit group (e.g., replace all)
+        // Otherwise, check if 2+ seconds have passed since last action
+        let should_start_new_group = if self.undo_grouping_active {
+            false // We're in an explicit undo group, don't start a new one
+        } else if let Some(last_time) = self.last_action_time {
             last_time.elapsed() > Duration::from_secs(2)
         } else {
             true // First action
@@ -202,8 +213,12 @@ impl Buffer {
         
         let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column;
         
-        // Check if we should start a new undo group (2+ seconds since last action)
-        let should_start_new_group = if let Some(last_time) = self.last_action_time {
+        // Check if we should start a new undo group
+        // If undo_grouping_active is true, we're in an explicit group (e.g., replace all)
+        // Otherwise, check if 2+ seconds have passed since last action
+        let should_start_new_group = if self.undo_grouping_active {
+            false // We're in an explicit undo group, don't start a new one
+        } else if let Some(last_time) = self.last_action_time {
             last_time.elapsed() > Duration::from_secs(2)
         } else {
             true // First action
@@ -274,8 +289,12 @@ impl Buffer {
             let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column - 1;
             let deleted_char = self.rope.char(char_idx);
             
-            // Check if we should start a new undo group (2+ seconds since last action)
-            let should_start_new_group = if let Some(last_time) = self.last_action_time {
+            // Check if we should start a new undo group
+            // If undo_grouping_active is true, we're in an explicit group (e.g., replace all)
+            // Otherwise, check if 2+ seconds have passed since last action
+            let should_start_new_group = if self.undo_grouping_active {
+                false // We're in an explicit undo group, don't start a new one
+            } else if let Some(last_time) = self.last_action_time {
                 last_time.elapsed() > Duration::from_secs(2)
             } else {
                 true // First action
@@ -331,8 +350,12 @@ impl Buffer {
             let prev_line_len = self.rope.line(self.cursor.line - 1).len_chars() - 1; // -1 for newline
             let char_idx = self.rope.line_to_char(self.cursor.line) - 1; // Remove newline
             
-            // Check if we should start a new undo group (2+ seconds since last action)
-            let should_start_new_group = if let Some(last_time) = self.last_action_time {
+            // Check if we should start a new undo group
+            // If undo_grouping_active is true, we're in an explicit group (e.g., replace all)
+            // Otherwise, check if 2+ seconds have passed since last action
+            let should_start_new_group = if self.undo_grouping_active {
+                false // We're in an explicit undo group, don't start a new one
+            } else if let Some(last_time) = self.last_action_time {
                 last_time.elapsed() > Duration::from_secs(2)
             } else {
                 true // First action
@@ -410,8 +433,12 @@ impl Buffer {
             // Proceed with forward deletion
             let deleted_char = self.rope.char(char_idx);
 
-            // Check if we should start a new undo group (2+ seconds since last action)
-            let should_start_new_group = if let Some(last_time) = self.last_action_time {
+            // Check if we should start a new undo group
+            // If undo_grouping_active is true, we're in an explicit group (e.g., replace all)
+            // Otherwise, check if 2+ seconds have passed since last action
+            let should_start_new_group = if self.undo_grouping_active {
+                false // We're in an explicit undo group, don't start a new one
+            } else if let Some(last_time) = self.last_action_time {
                 last_time.elapsed() > Duration::from_secs(2)
             } else {
                 true // First action
@@ -468,8 +495,12 @@ impl Buffer {
             let char_idx = self.rope.line_to_char(self.cursor.line) + self.cursor.column;
 
             // Proceed with newline deletion
-            // Check if we should start a new undo group (2+ seconds since last action)
-            let should_start_new_group = if let Some(last_time) = self.last_action_time {
+            // Check if we should start a new undo group
+            // If undo_grouping_active is true, we're in an explicit group (e.g., replace all)
+            // Otherwise, check if 2+ seconds have passed since last action
+            let should_start_new_group = if self.undo_grouping_active {
+                false // We're in an explicit undo group, don't start a new one
+            } else if let Some(last_time) = self.last_action_time {
                 last_time.elapsed() > Duration::from_secs(2)
             } else {
                 true // First action
@@ -544,6 +575,81 @@ impl Buffer {
                 cursor_after: start.clone(),
             };
             self.add_undo_state_new_group(undo_action);
+
+            // Update cursor position and clear selection
+            self.cursor.line = start.line;
+            self.cursor.column = start.column;
+            self.cursor.preferred_visual_column = start.column;
+            self.cursor.clear_selection();
+
+            self.mark_dirty();
+            
+            // Handle the deletion in the syntax highlighter
+            if lines_deleted > 0 {
+                // Multiple lines were deleted
+                for _ in 0..lines_deleted {
+                    self.syntax_highlighter.delete_line(&self.rope, start.line + 1);
+                }
+            }
+            // Update the line where deletion occurred
+            self.update_syntax_for_line(start.line);
+        }
+    }
+
+    /// Delete selected text without copying to clipboard (for internal use like find/replace)
+    pub fn delete_selection_no_clipboard(&mut self, start: Position, end: Position) {
+        let start_char_idx = self.rope.line_to_char(start.line) + start.column;
+        let end_char_idx = self.rope.line_to_char(end.line) + end.column;
+
+        if start_char_idx < end_char_idx {
+            let deleted_text = self.rope.slice(start_char_idx..end_char_idx).to_string();
+            
+            // Count how many lines are being deleted
+            let lines_deleted = end.line - start.line;
+            
+            self.rope.remove(start_char_idx..end_char_idx);
+
+            // Always add to undo stack - whether we're in a group or not
+            // The grouping logic will handle whether to create a new group or add to existing
+            let undo_action = UndoAction::DeleteText {
+                position: start.clone(),
+                text: deleted_text,
+                cursor_after: start.clone(),
+            };
+            
+            // Check if we should start a new undo group
+            let should_start_new_group = if self.undo_grouping_active {
+                false // We're in an explicit undo group, don't start a new one
+            } else if let Some(last_time) = self.last_action_time {
+                last_time.elapsed() > Duration::from_secs(2)
+            } else {
+                true // First action
+            };
+            
+            if should_start_new_group || self.undo_stack.is_empty() {
+                self.add_undo_state_new_group(undo_action);
+            } else {
+                // Add to existing group or create new one if different action type
+                if let Some(last_undo) = self.undo_stack.last_mut() {
+                    match &mut last_undo.action {
+                        UndoAction::DeleteText { ref mut text, .. } => {
+                            // Append to existing delete action
+                            if let UndoAction::DeleteText { text: ref new_text, .. } = undo_action {
+                                text.push_str(new_text);
+                            }
+                        }
+                        _ => {
+                            // Different action type, create new group
+                            self.add_undo_state_new_group(undo_action);
+                        }
+                    }
+                } else {
+                    self.add_undo_state_new_group(undo_action);
+                }
+            }
+            
+            // Update last action time
+            self.last_action_time = Some(Instant::now());
 
             // Update cursor position and clear selection
             self.cursor.line = start.line;
@@ -758,11 +864,19 @@ impl Buffer {
                 clipboard.set_text(selected_text.clone())?;
                 
                 // Push cut to undo stack as delete
-                self.add_undo_state(UndoAction::DeleteText {
+                // If we're in an undo group, use add_undo_state to keep it in the group
+                // Otherwise, use add_undo_state_new_group to start a new group
+                let undo_action = UndoAction::DeleteText {
                     position: start.clone(),
                     text: selected_text.clone(),
                     cursor_after: start.clone(),
-                });
+                };
+                
+                if self.undo_grouping_active {
+                    self.add_undo_state(undo_action);
+                } else {
+                    self.add_undo_state_new_group(undo_action);
+                }
 
                 // Clear redo stack
                 self.redo_stack.clear();
@@ -936,10 +1050,17 @@ impl Buffer {
     
     /// Add an action to the undo stack (for operations like paste/cut that don't group)
     fn add_undo_state(&mut self, action: UndoAction) {
+        let group_id = if self.undo_grouping_active {
+            Some(self.current_undo_group_id)
+        } else {
+            None
+        };
+        
         let undo_state = UndoState {
             action,
             selection_before: self.cursor.get_selection_range(),
             selection_after: None, // Will be set after the action is performed
+            group_id,
         };
         
         self.undo_stack.push(undo_state);
@@ -955,16 +1076,26 @@ impl Buffer {
     
     /// Add an action to the undo stack for a new group (updates timestamp)
     fn add_undo_state_new_group(&mut self, action: UndoAction) {
+        let group_id = if self.undo_grouping_active {
+            Some(self.current_undo_group_id)
+        } else {
+            None
+        };
+        
         let undo_state = UndoState {
             action,
             selection_before: self.cursor.get_selection_range(),
             selection_after: None, // Will be set after the action is performed
+            group_id,
         };
         
         self.undo_stack.push(undo_state);
         
         // Update action timestamp for grouping (starting a new group)
-        self.last_action_time = Some(Instant::now());
+        // If undo_grouping_active is true, we keep the existing timestamp to continue the group
+        if !self.undo_grouping_active {
+            self.last_action_time = Some(Instant::now());
+        }
         
         // Clear redo stack when new action is added
         self.redo_stack.clear();
@@ -975,82 +1106,125 @@ impl Buffer {
         }
     }
     
-    /// Undo the last action
+    /// Undo the last action or group of actions
     pub fn undo(&mut self) -> bool {
         if let Some(undo_state) = self.undo_stack.pop() {
-            match undo_state.action {
-                UndoAction::InsertText { position, ref text, cursor_after: _ } => {
-                    // Undo insert by deleting the inserted text
-                    let end_pos = self.calculate_end_position(position.clone(), text);
-                    self.delete_text_range(position.clone(), end_pos);
-                    self.cursor.line = position.line;
-                    self.cursor.column = position.column;
-                    self.cursor.preferred_visual_column = position.column;
-                    self.cursor.clear_selection();
-                }
-                UndoAction::DeleteText { position, ref text, cursor_after: _ } => {
-                    // Undo delete by inserting the deleted text
-                    self.cursor.line = position.line;
-                    self.cursor.column = position.column;
-                    self.insert_text_at_cursor(text);
-                }
-                UndoAction::ReplaceText { position, ref old_text, new_text: _, cursor_after: _ } => {
-                    // Undo replace by replacing new text with old text
-                    let end_pos = self.calculate_end_position(position.clone(), old_text);
-                    self.delete_text_range(position.clone(), end_pos);
-                    self.cursor.line = position.line;
-                    self.cursor.column = position.column;
-                    self.insert_text_at_cursor(old_text);
+            let group_id = undo_state.group_id;
+            
+            // Process the first action
+            self.apply_undo_action(&undo_state);
+            self.redo_stack.push(undo_state);
+            
+            // If this action belongs to a group, undo all actions in the same group
+            if let Some(gid) = group_id {
+                while let Some(next_state) = self.undo_stack.last() {
+                    if next_state.group_id == Some(gid) {
+                        let state = self.undo_stack.pop().unwrap();
+                        self.apply_undo_action(&state);
+                        self.redo_stack.push(state);
+                    } else {
+                        break;
+                    }
                 }
             }
             
-            // Add to redo stack
-            self.redo_stack.push(undo_state);
             true
         } else {
             false
         }
     }
     
-    /// Redo the last undone action
+    /// Apply a single undo action
+    fn apply_undo_action(&mut self, undo_state: &UndoState) {
+        match &undo_state.action {
+            UndoAction::InsertText { position, text, cursor_after: _ } => {
+                // Undo insert by deleting the inserted text
+                let end_pos = self.calculate_end_position(position.clone(), text);
+                self.delete_text_range(position.clone(), end_pos);
+                self.cursor.line = position.line;
+                self.cursor.column = position.column;
+                self.cursor.preferred_visual_column = position.column;
+                self.cursor.clear_selection();
+            }
+            UndoAction::DeleteText { position, text, cursor_after: _ } => {
+                // Undo delete by inserting the deleted text
+                self.cursor.line = position.line;
+                self.cursor.column = position.column;
+                self.insert_text_at_cursor(text);
+            }
+            UndoAction::ReplaceText { position, old_text, new_text: _, cursor_after: _ } => {
+                // Undo replace by replacing new text with old text
+                let end_pos = self.calculate_end_position(position.clone(), old_text);
+                self.delete_text_range(position.clone(), end_pos);
+                self.cursor.line = position.line;
+                self.cursor.column = position.column;
+                self.insert_text_at_cursor(old_text);
+            }
+        }
+    }
+    
+    /// Redo the last undone action or group of actions
     pub fn redo(&mut self) -> bool {
         if let Some(redo_state) = self.redo_stack.pop() {
-            match redo_state.action {
-                UndoAction::InsertText { position, ref text, cursor_after } => {
-                    // Redo insert
-                    self.cursor.line = position.line;
-                    self.cursor.column = position.column;
-                    self.insert_text_at_cursor(text);
-                    self.cursor.line = cursor_after.line;
-                    self.cursor.column = cursor_after.column;
-                    self.cursor.preferred_visual_column = cursor_after.column;
-                }
-                UndoAction::DeleteText { position, ref text, cursor_after } => {
-                    // Redo delete
-                    let end_pos = self.calculate_end_position(position.clone(), text);
-                    self.delete_text_range(position, end_pos);
-                    self.cursor.line = cursor_after.line;
-                    self.cursor.column = cursor_after.column;
-                    self.cursor.preferred_visual_column = cursor_after.column;
-                }
-                UndoAction::ReplaceText { position, old_text: _, ref new_text, cursor_after } => {
-                    // Redo replace
-                    let end_pos = self.calculate_end_position(position.clone(), new_text);
-                    self.delete_text_range(position.clone(), end_pos);
-                    self.cursor.line = position.line;
-                    self.cursor.column = position.column;
-                    self.insert_text_at_cursor(new_text);
-                    self.cursor.line = cursor_after.line;
-                    self.cursor.column = cursor_after.column;
-                    self.cursor.preferred_visual_column = cursor_after.column;
+            let group_id = redo_state.group_id;
+            
+            // If this is part of a group, we need to redo all actions in the group
+            // But they're in reverse order in the redo stack, so collect them first
+            let mut group_actions = vec![redo_state];
+            
+            if let Some(gid) = group_id {
+                while let Some(next_state) = self.redo_stack.last() {
+                    if next_state.group_id == Some(gid) {
+                        group_actions.push(self.redo_stack.pop().unwrap());
+                    } else {
+                        break;
+                    }
                 }
             }
             
-            // Add back to undo stack
-            self.undo_stack.push(redo_state);
+            // Apply actions in reverse order (since we popped them from the stack)
+            for state in group_actions.into_iter().rev() {
+                self.apply_redo_action(&state);
+                self.undo_stack.push(state);
+            }
+            
             true
         } else {
             false
+        }
+    }
+    
+    /// Apply a single redo action
+    fn apply_redo_action(&mut self, redo_state: &UndoState) {
+        match &redo_state.action {
+            UndoAction::InsertText { position, text, cursor_after } => {
+                // Redo insert
+                self.cursor.line = position.line;
+                self.cursor.column = position.column;
+                self.insert_text_at_cursor(text);
+                self.cursor.line = cursor_after.line;
+                self.cursor.column = cursor_after.column;
+                self.cursor.preferred_visual_column = cursor_after.column;
+            }
+            UndoAction::DeleteText { position, text, cursor_after } => {
+                // Redo delete
+                let end_pos = self.calculate_end_position(position.clone(), text);
+                self.delete_text_range(position.clone(), end_pos);
+                self.cursor.line = cursor_after.line;
+                self.cursor.column = cursor_after.column;
+                self.cursor.preferred_visual_column = cursor_after.column;
+            }
+            UndoAction::ReplaceText { position, old_text: _, new_text, cursor_after } => {
+                // Redo replace
+                let end_pos = self.calculate_end_position(position.clone(), new_text);
+                self.delete_text_range(position.clone(), end_pos);
+                self.cursor.line = position.line;
+                self.cursor.column = position.column;
+                self.insert_text_at_cursor(new_text);
+                self.cursor.line = cursor_after.line;
+                self.cursor.column = cursor_after.column;
+                self.cursor.preferred_visual_column = cursor_after.column;
+            }
         }
     }
     
@@ -1181,6 +1355,21 @@ impl Buffer {
             self.dedent_single_line(line_num);
             self.update_syntax_for_line(line_num);
         }
+    }
+    
+    /// Start an undo group - all subsequent operations will be grouped together
+    pub fn start_undo_group(&mut self) {
+        self.undo_grouping_active = true;
+        self.current_undo_group_id += 1; // Increment group ID for this new group
+        // Force the next action to NOT start a new group
+        self.last_action_time = Some(Instant::now());
+    }
+    
+    /// End an undo group - next operation will start a new group
+    pub fn end_undo_group(&mut self) {
+        self.undo_grouping_active = false;
+        // Clear the last action time to force the next action to start a new group
+        self.last_action_time = None;
     }
     
     /// Helper to dedent a single line
