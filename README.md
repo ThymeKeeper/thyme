@@ -1,82 +1,60 @@
-# Thyme
+# Thyme 🌿
 
-A terminal text editor that won't make you cry. Written in Rust.
+A modern terminal text editor that won't waste your thyme.
 
 ## Features
 
-- **Syntax highlighting** for 35+ languages with state machine-based parsing
-- **Customizable themes** with live preview (includes Monokai, Dracula, Solarized Dark, Nord)
-- **Mouse support** including click, drag selection, and even scroll wheel!
-- **Line numbers** with absolute/relative modes
-- **Undo/Redo** with intelligent action grouping
-- **Configurable margins** for distraction-free writing
-- **Word wrapping** with intelligent cursor movement and proper indentation preservation
-- **UTF-8 support** with proper character handling
-- **Clipboard integration** (copy/cut/paste)
-- **Paragraph navigation** for quick document traversal
-- **Bullet journal** shortcuts for task management
+Thyme is a lightweight, terminal-based text editor written in Rust that focuses on simplicity without sacrificing the essentials.
+
+### Core Features
+
+- **Syntax Highlighting** - Support for 35+ languages with accurate tokenization
+- **Customizable Themes** - Multiple built-in themes with live preview (Ctrl+T)
+- **Word Wrapping** - Smart cursor movement that actually works with wrapped lines
+- **Find & Replace** - With regex-free simplicity (sometimes less is more)
+- **Line Numbers** - Absolute, relative, or none - your choice
+- **Mouse Support** - Click, drag, scroll - because it's the 21st century
+- **UTF-8 Support** - 完全なUnicode対応 🎌
+- **Configurable Margins** - For those who appreciate whitespace for distraction free coding/writing
+- **Undo/Redo** - With intelligent time based grouping
+
+### Bullet Journal Support
+
+Because sometimes you need to organize your thoughts:
+- `Ctrl+Left` - Insert todo bullet (□)
+- `Ctrl+Down` - Insert in-progress bullet (◪) 
+- `Ctrl+Right` - Insert done bullet (■)
 
 ## Installation
 
-### From Source
-
 ```bash
-git clone https://github.com/yourusername/thyme.git
+# Clone the repository
+git clone https://github.com/thymekeeper/thyme.git
 cd thyme
+
+# Build with cargo
 cargo build --release
-./target/release/thyme
+
+# Run directly
+cargo run --release [filename]
+
+# Or install locally
+cargo install --path .
 ```
-
-### Prerequisites
-
-- Rust 1.70 or higher
-- A modern terminal
 
 ## Usage
 
 ```bash
-# Open a new file
-thyme
-
-# Open an existing file
+# Open a file
 thyme myfile.rs
+
+# Start with empty buffer
+thyme
 ```
-
-## Key Bindings
-
-### File Operations
-- `Ctrl+S` - Save file
-- `Ctrl+Q` - Quit
-
-### Navigation
-- Arrow keys - Move cursor
-- `Home/End` - Beginning/end of line
-- `PageUp/PageDown` - Move by page
-- `Ctrl+PageUp/PageDown` - Jump between paragraphs
-
-### Editing
-- `Ctrl+A` - Select all
-- `Ctrl+C/X/V` - Copy/Cut/Paste
-- `Ctrl+Z/Y` - Undo/Redo
-- `Tab/Shift+Tab` - Indent/Dedent
-
-### UI Customization
-- `F1` - Help
-- `F2/F3` - Adjust vertical margins
-- `F4/F5` - Adjust horizontal margins
-- `F6` - Toggle word wrap
-- `F7` - Cycle line numbers (None → Absolute → Relative)
-- `Ctrl+L` - Language selection
-- `Ctrl+T` - Theme selection
-
-### Bullet Journal
-- `Ctrl+←` - Insert todo bullet (□)
-- `Ctrl+↓` - Insert in-progress bullet (◪)
-- `Ctrl+→` - Insert done bullet (■)
 
 ## Configuration
 
-Configuration is stored in `~/.config/thyme/config.toml`. The editor creates a default configuration on first run.
+Thyme stores its configuration in `~/.config/thyme/config.toml`. The config file is created automatically on first run with sensible defaults.
 
 ### Example Configuration
 
@@ -84,55 +62,83 @@ Configuration is stored in `~/.config/thyme/config.toml`. The editor creates a d
 word_wrap = false
 auto_save_delay_seconds = 0  # 0 = disabled
 scrolloff = 3
-theme_name = "Monokai"
 
 [margins]
 vertical = 0
 horizontal = 0
 
-[keybindings]
-help = { code = "F1", modifiers = [] }
-toggle_word_wrap = { code = "F6", modifiers = [] }
-language_selection = { code = "l", modifiers = ["ctrl"] }
+[gutter]
+# Options: "None", "Absolute", "Relative"
+mode = "None"
 ```
 
-### Themes
+## Key Bindings
 
-Themes are stored in `~/.config/thyme/themes/`. The editor includes several built-in themes, but more can be added:
-- Default Dark
-- Monokai
-- Dracula
-- Solarized Dark
-- Nord
+### Essential Commands
+- `Ctrl+S`           - Save file
+- `Ctrl+Q`           - Quit
+- `Ctrl+Z/Y`         - Undo/Redo
+- `F1`               - Help (comprehensive keybinding list)
+
+### Navigation
+- `Arrow Keys`       - Move caret
+- `PgUp/PgDown`      - Scroll by page
+- `Ctrl+PgUp/PgDown` - Jump between paragraphs
+- `Home/End`         - Beginning/end of line
+
+### Editing
+- `Ctrl+A`           - Select all
+- `Ctrl+C/X/V`       - Copy/Cut/Paste
+- `Tab/Shift+Tab`    - Indent/Dedent
+- `Ctrl+F`           - Find & Replace
+
+### Finding/replaceing
+- `Ctrl+F`           - Find
+- `Ctrl+Alt+F`       - Find previous
+- `Ctrl+H`           - Replace
+- `Ctrl+Alt+H`       - Replace all
+
+### Customization
+- `F2/F3`            - Adjust vertical margins
+- `F4/F5`            - Adjust horizontal margins
+- `F6`               - Toggle word wrap
+- `F7`               - Cycle line numbers (None → Absolute → Relative)
+- `Ctrl+L`           - Change syntax highlighting language
+- `Ctrl+T`           - Change color theme
 
 ## Supported Languages
 
-Syntax highlighting is available for:
+Thyme provides syntax highlighting for:
 
-**Systems**: Rust, C, C++, Go  
-**Scripting**: Python, JavaScript, TypeScript, Ruby, Perl, Lua, Bash  
-**Web**: HTML, CSS, Markdown  
-**Data**: JSON, TOML, YAML, XML, SQL  
-**Functional**: Haskell, Clojure, Elixir, Erlang, Elm  
-**Others**: Java, PHP, Swift, Kotlin, Scala, R, Dart, Dockerfile, Makefile
+**Popular Languages**: Rust, Python, JavaScript, TypeScript, Go, Java, C, C++, Swift, Kotlin
 
-Language detection is automatic based on file extension.
+**Web Technologies**: HTML, CSS, JSON, XML, YAML, TOML
 
-## Technical Details
+**Scripting**: Bash, Ruby, Perl, Lua, R
 
-- Built with [Ratatui](https://github.com/ratatui-org/ratatui) for terminal UI
-- Uses [Ropey](https://github.com/cessen/ropey) for efficient text rope data structure
-- Implements gap buffer-style editing with piece table characteristics
-- State machine-based syntax highlighting with incremental updates
-- Zero dependencies for core editing operations
+**Functional**: Haskell, Clojure, Elixir, Erlang, Elm, Scala
 
-## Contributing
+**Config Files**: Dockerfile, Makefile, SQL
 
-Pull requests welcome. Please ensure:
-- Code follows Rust idioms and passes `cargo clippy`
-- New features include appropriate tests
-- Syntax highlighters use the existing state machine pattern
+**And More**: Markdown, Vim Script, PHP, Dart
 
-## Why "Thyme"?
+## Themes
 
-Because everyone needs more thyme for editing.
+Thyme includes several built-in themes:
+- Default Dark (for the minimalists)
+- Monokai
+- Dracula  
+- Solarized Dark
+- Nord
+
+Themes are stored in `~/.config/thyme/themes/` as TOML files. Feel free to create your own!
+
+## Building from Source
+
+Requirements:
+- Rust 1.70+ 
+- A modern terminal
+
+---
+
+*Note: No actual herbs were harmed in the making of this editor.*
