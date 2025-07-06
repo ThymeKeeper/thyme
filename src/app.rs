@@ -691,6 +691,19 @@ impl App {
             return Ok(true);
         }
 
+        // Line movement
+        if key == keybindings.move_line_up {
+            self.editor.move_lines_up();
+            self.editor.adjust_viewport(&self.config, self.calculate_visible_lines());
+            return Ok(true);
+        }
+
+        if key == keybindings.move_line_down {
+            self.editor.move_lines_down();
+            self.editor.adjust_viewport(&self.config, self.calculate_visible_lines());
+            return Ok(true);
+        }
+
         Ok(false)
     }
 

@@ -38,6 +38,9 @@ pub struct KeyBindings {
     // Paragraph navigation
     pub paragraph_up: SerializableKeyEvent,
     pub paragraph_down: SerializableKeyEvent,
+    // Line movement
+    pub move_line_up: SerializableKeyEvent,
+    pub move_line_down: SerializableKeyEvent,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -319,6 +322,15 @@ impl Default for Config {
                 paragraph_down: SerializableKeyEvent {
                     code: "PageDown".to_string(),
                     modifiers: vec!["ctrl".to_string()],
+                },
+                // Line movement
+                move_line_up: SerializableKeyEvent {
+                    code: "Up".to_string(),
+                    modifiers: vec!["ctrl".to_string(), "shift".to_string()],
+                },
+                move_line_down: SerializableKeyEvent {
+                    code: "Down".to_string(),
+                    modifiers: vec!["ctrl".to_string(), "shift".to_string()],
                 },
             },
             margins: Margins {

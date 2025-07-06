@@ -1028,6 +1028,18 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
             buffer.dedent_lines();
         }
     }
+    
+    pub fn move_lines_up(&mut self) {
+        if let Some(buffer) = self.current_buffer_mut() {
+            buffer.move_lines_up();
+        }
+    }
+    
+    pub fn move_lines_down(&mut self) {
+        if let Some(buffer) = self.current_buffer_mut() {
+            buffer.move_lines_down();
+        }
+    }
 
     pub fn delete_char_backwards(&mut self, content_width: usize, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer_mut() {

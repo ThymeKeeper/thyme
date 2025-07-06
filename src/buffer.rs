@@ -1420,4 +1420,210 @@ impl Buffer {
             self.mark_dirty();
         }
     }
+    
+    /// Move selected lines up
+    pub fn move_lines_up(&mut self) {
+        let total_lines = self.rope.len_lines();
+        
+        if let Some((start, end)) = self.cursor.get_selection_range() {
+            // Multiple lines selected - move all of them
+            let start_line = start.line;
+            let end_line = end.line;
+            
+            // Can't move if already at the top
+            if start_line == 0 {
+                return;
+            }
+            
+            // Get the text of the line above
+            let line_above = self.get_line_text(start_line - 1);
+            let line_above_start = self.rope.line_to_char(start_line - 1);
+            let line_above_end = self.rope.line_to_char(start_line);
+            
+            // Start undo group for the entire operation
+            self.start_undo_group();
+            
+            // Remove the line above
+            self.rope.remove(line_above_start..line_above_end);
+            
+            // Insert it after the selected lines
+            let insert_pos = self.rope.line_to_char(end_line); // end_line is now one less due to removal
+            self.rope.insert(insert_pos, &line_above);
+            
+            // Update cursor and selection positions
+            self.cursor.line -= 1;
+            if let Some(sel_start) = self.cursor.selection_start.as_mut() {
+                sel_start.line -= 1;
+            }
+            
+            // Add to undo stack
+            let undo_action = UndoAction::ReplaceText {
+                position: Position { line: start_line - 1, column: 0 },
+                old_text: String::new(), // This is a complex operation, we'll rely on undo snapshots
+                new_text: String::new(),
+                cursor_after: Position { line: self.cursor.line, column: self.cursor.column },
+            };
+            self.add_undo_state_new_group(undo_action);
+            
+            self.end_undo_group();
+            self.mark_dirty();
+            
+            // Update syntax highlighting for affected lines
+            for line_num in (start_line - 1)..=(end_line) {
+                if line_num < self.rope.len_lines() {
+                    self.update_syntax_for_line(line_num);
+                }
+            }
+        } else {
+            // No selection - just move the current line
+            let line_num = self.cursor.line;
+            
+            if line_num == 0 {
+                return;
+            }
+            
+            // Get the text of the current line and the line above
+            let current_line = self.get_line_text(line_num);
+            let line_above = self.get_line_text(line_num - 1);
+            
+            let line_above_start = self.rope.line_to_char(line_num - 1);
+            let current_line_end = if line_num + 1 < total_lines {
+                self.rope.line_to_char(line_num + 1)
+            } else {
+                self.rope.len_chars()
+            };
+            
+            // Start undo group
+            self.start_undo_group();
+            
+            // Replace both lines
+            self.rope.remove(line_above_start..current_line_end);
+            self.rope.insert(line_above_start, &current_line);
+            self.rope.insert(line_above_start + current_line.len(), &line_above);
+            
+            // Update cursor position
+            self.cursor.line -= 1;
+            
+            // Add to undo stack
+            let undo_action = UndoAction::ReplaceText {
+                position: Position { line: line_num - 1, column: 0 },
+                old_text: format!("{}{}", line_above, current_line),
+                new_text: format!("{}{}", current_line, line_above),
+                cursor_after: Position { line: self.cursor.line, column: self.cursor.column },
+            };
+            self.add_undo_state_new_group(undo_action);
+            
+            self.end_undo_group();
+            self.mark_dirty();
+            
+            // Update syntax highlighting
+            self.update_syntax_for_line(line_num - 1);
+            self.update_syntax_for_line(line_num);
+        }
+    }
+    
+    /// Move selected lines down
+    pub fn move_lines_down(&mut self) {
+        let total_lines = self.rope.len_lines();
+        
+        if let Some((start, end)) = self.cursor.get_selection_range() {
+            // Multiple lines selected - move all of them
+            let start_line = start.line;
+            let end_line = end.line;
+            
+            // Can't move if already at the bottom
+            if end_line >= total_lines - 1 {
+                return;
+            }
+            
+            // Get the text of the line below
+            let line_below = self.get_line_text(end_line + 1);
+            let line_below_start = self.rope.line_to_char(end_line + 1);
+            let line_below_end = if end_line + 2 < total_lines {
+                self.rope.line_to_char(end_line + 2)
+            } else {
+                self.rope.len_chars()
+            };
+            
+            // Start undo group for the entire operation
+            self.start_undo_group();
+            
+            // Remove the line below
+            self.rope.remove(line_below_start..line_below_end);
+            
+            // Insert it before the selected lines
+            let insert_pos = self.rope.line_to_char(start_line);
+            self.rope.insert(insert_pos, &line_below);
+            
+            // Update cursor and selection positions
+            self.cursor.line += 1;
+            if let Some(sel_start) = self.cursor.selection_start.as_mut() {
+                sel_start.line += 1;
+            }
+            
+            // Add to undo stack
+            let undo_action = UndoAction::ReplaceText {
+                position: Position { line: start_line, column: 0 },
+                old_text: String::new(), // This is a complex operation, we'll rely on undo snapshots
+                new_text: String::new(),
+                cursor_after: Position { line: self.cursor.line, column: self.cursor.column },
+            };
+            self.add_undo_state_new_group(undo_action);
+            
+            self.end_undo_group();
+            self.mark_dirty();
+            
+            // Update syntax highlighting for affected lines
+            for line_num in start_line..=(end_line + 1) {
+                if line_num < self.rope.len_lines() {
+                    self.update_syntax_for_line(line_num);
+                }
+            }
+        } else {
+            // No selection - just move the current line
+            let line_num = self.cursor.line;
+            
+            if line_num >= total_lines - 1 {
+                return;
+            }
+            
+            // Get the text of the current line and the line below
+            let current_line = self.get_line_text(line_num);
+            let line_below = self.get_line_text(line_num + 1);
+            
+            let current_line_start = self.rope.line_to_char(line_num);
+            let line_below_end = if line_num + 2 < total_lines {
+                self.rope.line_to_char(line_num + 2)
+            } else {
+                self.rope.len_chars()
+            };
+            
+            // Start undo group
+            self.start_undo_group();
+            
+            // Replace both lines
+            self.rope.remove(current_line_start..line_below_end);
+            self.rope.insert(current_line_start, &line_below);
+            self.rope.insert(current_line_start + line_below.len(), &current_line);
+            
+            // Update cursor position
+            self.cursor.line += 1;
+            
+            // Add to undo stack
+            let undo_action = UndoAction::ReplaceText {
+                position: Position { line: line_num, column: 0 },
+                old_text: format!("{}{}", current_line, line_below),
+                new_text: format!("{}{}", line_below, current_line),
+                cursor_after: Position { line: self.cursor.line, column: self.cursor.column },
+            };
+            self.add_undo_state_new_group(undo_action);
+            
+            self.end_undo_group();
+            self.mark_dirty();
+            
+            // Update syntax highlighting
+            self.update_syntax_for_line(line_num);
+            self.update_syntax_for_line(line_num + 1);
+        }
+    }
 }
