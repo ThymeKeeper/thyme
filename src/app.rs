@@ -318,7 +318,7 @@ impl App {
                 // Some terminals send BackTab instead of Shift+Tab
                 self.editor.dedent_lines();
             }
-            KeyCode::Char(c) => self.editor.insert_char(c, content_width),
+            KeyCode::Char(c) => self.editor.insert_char(c, content_width, &self.config, visible_lines),
             _ => {}
         }
         
@@ -383,7 +383,7 @@ impl App {
                 if self.editor.find_replace_focus != FindReplaceFocus::Editor {
                     self.editor.add_char_to_find_query(c);
                 } else {
-                    self.editor.insert_char(c, self.calculate_content_width());
+                    self.editor.insert_char(c, self.calculate_content_width(), &self.config, self.calculate_visible_lines());
                 }
             }
 
@@ -822,17 +822,17 @@ impl App {
 
         // Bullet journal hotkeys
         if key == keybindings.bullet_todo {
-            self.editor.insert_char('□', self.calculate_content_width());
+            self.editor.insert_char('□', self.calculate_content_width(), &self.config, self.calculate_visible_lines());
             return Ok(true);
         }
 
         if key == keybindings.bullet_in_progress {
-            self.editor.insert_char('◪', self.calculate_content_width());
+            self.editor.insert_char('◪', self.calculate_content_width(), &self.config, self.calculate_visible_lines());
             return Ok(true);
         }
 
         if key == keybindings.bullet_done {
-            self.editor.insert_char('■', self.calculate_content_width());
+            self.editor.insert_char('■', self.calculate_content_width(), &self.config, self.calculate_visible_lines());
             return Ok(true);
         }
 

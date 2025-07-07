@@ -21,7 +21,7 @@ Thyme is a lightweight, terminal-based text editor written in Rust that focuses 
 ### Bullet Journal Support
 
 Because sometimes you need to organize your thoughts:
-- `Ctrl+Left` - Insert todo bullet (□)
+- `Ctrl+Left` - Insert todo bullet (🞎)
 - `Ctrl+Down` - Insert in-progress bullet (◪) 
 - `Ctrl+Right` - Insert done bullet (■)
 

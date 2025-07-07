@@ -1202,10 +1202,11 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
     }
 
     // Text modification methods
-    pub fn insert_char(&mut self, c: char, content_width: usize) {
+    pub fn insert_char(&mut self, c: char, content_width: usize, config: &Config, visible_lines: usize) {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.insert_char(c);
             self.update_preferred_visual_column_with_width(content_width);
+            self.adjust_viewport(config, visible_lines);
         }
     }
 
@@ -1310,19 +1311,11 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
                 return;
             }
             
-            // For small buffers that fit entirely in viewport, prefer top positioning
-            // but establish proper scrolloff zones as the buffer grows
+            // For small buffers that fit entirely in viewport, always align with top
+            // This matches the behavior of GUI text editors
             if total_file_lines <= visible_lines {
-                // Buffer fits entirely in viewport
-                if cursor_line < scrolloff {
-                    // Cursor is in top area - keep top positioning
-                    self.viewport_line = -(scrolloff as isize);
-                } else {
-                    // Cursor has moved down - establish proper bottom scrolloff
-                    // Position viewport so cursor is at bottom scrolloff boundary
-                    let desired_viewport = cursor_line as isize - (visible_lines - scrolloff - 1) as isize;
-                    self.viewport_line = desired_viewport.max(-(scrolloff as isize));
-                }
+                // Buffer fits entirely in viewport - keep it aligned to top with scrolloff
+                self.viewport_line = -(scrolloff as isize);
                 return;
             }
             
@@ -1365,6 +1358,14 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
             if effective_visible == 0 {
                 // If scrolloff is too large for the viewport, just center the cursor
                 self.viewport_line = cursor_visual_line as isize - visible_lines as isize / 2;
+                return;
+            }
+            
+            // For small buffers that fit entirely in viewport, always align with top
+            // This matches the behavior of GUI text editors
+            if total_visual_lines <= visible_lines {
+                // Buffer fits entirely in viewport - keep it aligned to top with scrolloff
+                self.viewport_line = -(scrolloff as isize);
                 return;
             }
             
@@ -1697,24 +1698,26 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
         // Use configurable horizontal scrolloff
         let h_scrolloff = config.horizontal_scrolloff as usize;
         
-        // Calculate the visible range
+        // Calculate the visible range with scrolloff zones
         let left_boundary = self.horizontal_offset + h_scrolloff;
-        let right_boundary = self.horizontal_offset + content_width.saturating_sub(h_scrolloff);
+        let right_boundary = self.horizontal_offset + content_width.saturating_sub(h_scrolloff + 1);
         
-        // Adjust horizontal offset if cursor is outside the visible range
+        // Adjust horizontal offset if cursor is outside the scrolloff zones
         if cursor_column < left_boundary && cursor_column >= h_scrolloff {
-            // Cursor is too far left - scroll left
+            // Cursor is too far left - scroll left to maintain scrolloff
             self.horizontal_offset = cursor_column.saturating_sub(h_scrolloff);
         } else if cursor_column < h_scrolloff {
             // Cursor is very close to start - reset to beginning
             self.horizontal_offset = 0;
-        } else if cursor_column > right_boundary {
-            // Cursor is too far right - scroll right
-            self.horizontal_offset = cursor_column + h_scrolloff - content_width;
+        } else if cursor_column >= right_boundary {
+            // Cursor is at or past the right boundary - scroll right to maintain scrolloff
+            // We need to ensure there's h_scrolloff space to the right of the cursor
+            self.horizontal_offset = cursor_column.saturating_sub(content_width.saturating_sub(h_scrolloff + 1));
             
-            // Don't scroll unnecessarily far
-            let max_offset = line_len.saturating_sub(content_width);
-            self.horizontal_offset = self.horizontal_offset.min(max_offset);
+            // Note: We intentionally don't limit by line length here because:
+            // 1. The scrolloff zone should work regardless of current line length
+            // 2. Other lines in the buffer might be longer
+            // 3. We want consistent scrolling behavior while typing
         }
         
         // Return true if the offset changed
