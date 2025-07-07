@@ -76,7 +76,6 @@ impl SyntaxHighlighter {
     fn setup_language_config(&mut self) {
         self.keywords.clear();
         self.operators.clear();
-
         match self.language.as_str() {
             "rust" => {
                 self.setup_rust();
@@ -157,11 +156,9 @@ impl SyntaxHighlighter {
             ("Box", TokenType::Type), ("Rc", TokenType::Type), ("Arc", TokenType::Type),
             ("RefCell", TokenType::Type), ("Mutex", TokenType::Type), ("RwLock", TokenType::Type),
         ];
-        
         for (word, token_type) in keywords {
             self.keywords.insert(word, token_type);
         }
-
         // Order matters! Longer operators must come before shorter ones
         self.operators = vec![
             // Three character operators
@@ -194,11 +191,9 @@ impl SyntaxHighlighter {
             ("bool", TokenType::Type), ("list", TokenType::Type), ("dict", TokenType::Type),
             ("tuple", TokenType::Type), ("set", TokenType::Type), ("bytes", TokenType::Type),
         ];
-
         for (word, token_type) in keywords {
             self.keywords.insert(word, token_type);
         }
-
         self.operators = vec![
             // Three character
             "//=", "**=",
@@ -227,11 +222,9 @@ impl SyntaxHighlighter {
             ("export", TokenType::Keyword), ("from", TokenType::Keyword), ("as", TokenType::Keyword),
             ("get", TokenType::Keyword), ("set", TokenType::Keyword), ("delete", TokenType::Keyword),
         ];
-
         for (word, token_type) in keywords {
             self.keywords.insert(word, token_type);
         }
-
         self.operators = vec![
             // Three character
             "===", "!==", ">>>", "<<=", ">>=", "**=",
@@ -255,11 +248,9 @@ impl SyntaxHighlighter {
             ("readonly", TokenType::Keyword), ("declare", TokenType::Keyword), ("unset", TokenType::Keyword),
             ("source", TokenType::Keyword), ("alias", TokenType::Keyword),
         ];
-
         for (word, token_type) in keywords {
             self.keywords.insert(word, token_type);
         }
-
         self.operators = vec![
             "&&", "||", "<<", ">>", "==", "!=", "<=", ">=",
             "=", "+", "-", "*", "/", "%", "!", "<", ">",
@@ -271,7 +262,6 @@ impl SyntaxHighlighter {
     fn setup_json(&mut self) {
         // JSON has no keywords - constants are handled in scan_identifier
         self.keywords.clear();
-
         self.operators = vec![
             ":", ",", "{", "}", "[", "]",
         ];
@@ -386,11 +376,9 @@ impl SyntaxHighlighter {
             ("lag", TokenType::Function), ("lead", TokenType::Function), ("first_value", TokenType::Function),
             ("last_value", TokenType::Function), ("listagg", TokenType::Function), ("string_agg", TokenType::Function),
         ];
-
         for (word, token_type) in keywords {
             self.keywords.insert(word, token_type);
         }
-
         self.operators = vec![
             ">=", "<=", "<>", "!=", "==", "||", "::",
             "=", "+", "-", "*", "/", "%", "<", ">",
@@ -401,7 +389,6 @@ impl SyntaxHighlighter {
     fn setup_toml(&mut self) {
         // TOML constants are handled in scan_identifier
         self.keywords.clear();
-
         self.operators = vec![
             "=", "[", "]", "{", "}", ",", ".",
         ];
@@ -410,7 +397,6 @@ impl SyntaxHighlighter {
     fn setup_html(&mut self) {
         // HTML doesn't have keywords - tags are identified contextually
         self.keywords.clear();
-        
         self.operators = vec![
             "<", ">", "</", "/>", "=",
         ];
@@ -420,7 +406,6 @@ impl SyntaxHighlighter {
         // CSS doesn't have keywords in the traditional sense
         // Properties are identified contextually in post-processing
         self.keywords.clear();
-
         self.operators = vec![
             "{", "}", ":", ";", ",", ".", "#", ">", "+", "~", "*",
             "(", ")", "[", "]", "=",
@@ -430,7 +415,6 @@ impl SyntaxHighlighter {
     fn setup_markdown(&mut self) {
         // Markdown doesn't have keywords - formatting is identified contextually
         self.keywords.clear();
-        
         self.operators = vec![
             "#", "*", "_", "-", "+", ">", "`", "[", "]", "(", ")",
             "!", "=", "|",
@@ -461,11 +445,9 @@ impl SyntaxHighlighter {
             ("uint64_t", TokenType::Type), ("int8_t", TokenType::Type), ("int16_t", TokenType::Type),
             ("int32_t", TokenType::Type), ("int64_t", TokenType::Type), ("bool", TokenType::Type),
         ];
-
         for (word, token_type) in keywords {
             self.keywords.insert(word, token_type);
         }
-
         self.operators = vec![
             // Three character
             "<<=", ">>=", "...",
@@ -481,7 +463,6 @@ impl SyntaxHighlighter {
     fn setup_cpp(&mut self) {
         // Start with C keywords
         self.setup_c();
-        
         // Add C++ specific keywords
         let cpp_keywords = [
             // C++ keywords
@@ -509,11 +490,9 @@ impl SyntaxHighlighter {
             ("unique_ptr", TokenType::Type), ("shared_ptr", TokenType::Type), ("weak_ptr", TokenType::Type),
             ("optional", TokenType::Type), ("variant", TokenType::Type), ("any", TokenType::Type),
         ];
-
         for (word, token_type) in cpp_keywords {
             self.keywords.insert(word, token_type);
         }
-
         // C++ has some additional operators
         self.operators.push("::");
         self.operators.push(".*");
@@ -523,7 +502,6 @@ impl SyntaxHighlighter {
     fn setup_xml(&mut self) {
         // XML doesn't have keywords - tags are identified contextually
         self.keywords.clear();
-        
         // XML is similar to HTML
         self.operators = vec![
             "<", ">", "</", "/>", "=", ":", "?",
@@ -533,7 +511,6 @@ impl SyntaxHighlighter {
     fn setup_yaml(&mut self) {
         // YAML constants are handled in scan_identifier
         self.keywords.clear();
-
         self.operators = vec![
             ":", "-", ">", "|", "&", "*", "!", "=", "[", "]", "{", "}",
         ];
@@ -550,11 +527,9 @@ impl SyntaxHighlighter {
             ("HEALTHCHECK", TokenType::Keyword), ("SHELL", TokenType::Keyword), ("MAINTAINER", TokenType::Keyword),
             ("AS", TokenType::Keyword),
         ];
-        
         for (word, token_type) in keywords {
             self.keywords.insert(word, token_type);
         }
-        
         self.operators = vec![
             "=", "[", "]", ",", "&&", "||", ";", "|", ">", "<", ">>", "<<",
         ];
@@ -572,11 +547,9 @@ impl SyntaxHighlighter {
             (".SECONDARY", TokenType::Keyword), (".DELETE_ON_ERROR", TokenType::Keyword),
             (".IGNORE", TokenType::Keyword), (".SILENT", TokenType::Keyword), (".EXPORT_ALL_VARIABLES", TokenType::Keyword),
         ];
-        
         for (word, token_type) in keywords {
             self.keywords.insert(word, token_type);
         }
-        
         self.operators = vec![
             "=", ":=", "+=", "?=", "!=", ":", ";", "|", "@", "-", "+",
             "(", ")", "$", "{", "}", "[", "]",
@@ -588,26 +561,20 @@ impl SyntaxHighlighter {
             self.line_states.clear();
             return;
         }
-
         let mut current_state = ScanState::Normal;
         let total_lines = rope.len_lines();
-        
         // Add a safety limit to prevent infinite loops
         let max_lines = total_lines.min(100000); // Reasonable limit
-        
         for line_idx in 0..max_lines {
             if line_idx >= total_lines {
                 break;
             }
-            
             let line_text = rope.line(line_idx).to_string();
             let (tokens, end_state) = self.scan_line(&line_text, current_state);
-            
             self.line_states.insert(line_idx, LineState {
                 tokens,
                 end_state,
             });
-            
             current_state = end_state;
         }
     }
@@ -617,7 +584,6 @@ impl SyntaxHighlighter {
         if self.language == "text" {
             return;
         }
-        
         // Get the state from before the range
         let start_state = if start_line > 0 {
             self.line_states.get(&(start_line - 1))
@@ -626,46 +592,36 @@ impl SyntaxHighlighter {
         } else {
             ScanState::Normal
         };
-        
         let mut current_state = start_state;
-        
         // Update all lines in the range
         for line_idx in start_line..=end_line.min(rope.len_lines() - 1) {
             let line_text = rope.line(line_idx).to_string();
             let (tokens, end_state) = self.scan_line(&line_text, current_state);
-            
             self.line_states.insert(line_idx, LineState {
                 tokens,
                 end_state,
             });
-            
             current_state = end_state;
         }
-        
         // Check if we need to continue updating beyond the range
         if end_line < rope.len_lines() - 1 {
             let next_line_state = self.line_states.get(&(end_line + 1))
                 .map(|state| state.end_state);
-            
             if next_line_state != Some(current_state) {
                 // State changed, need to continue updating
                 for line_idx in (end_line + 1)..rope.len_lines() {
                     let line_text = rope.line(line_idx).to_string();
                     let (tokens, new_end_state) = self.scan_line(&line_text, current_state);
-                    
                     let old_state = self.line_states.get(&line_idx)
                         .map(|state| state.end_state);
-                    
                     self.line_states.insert(line_idx, LineState {
                         tokens,
                         end_state: new_end_state,
                     });
-                    
                     // If the state didn't change, we can stop
                     if old_state == Some(new_end_state) {
                         break;
                     }
-                    
                     current_state = new_end_state;
                 }
             }
@@ -678,11 +634,9 @@ impl SyntaxHighlighter {
         let chars: Vec<char> = line.chars().collect();
         let mut i = 0;
         let mut current_token_start = 0;
-        
         // Safety: prevent infinite loops
         let max_iterations = chars.len() * 2; // Should never need more than this
         let mut iterations = 0;
-
         // Handle continuing states from previous line
         match state {
             ScanState::InString { .. } => {
@@ -696,16 +650,13 @@ impl SyntaxHighlighter {
             }
             _ => {}
         }
-
         while i < chars.len() {
             iterations += 1;
             if iterations > max_iterations {
                 // Detected potential infinite loop - silently break to prevent hanging
                 break;
             }
-            
             let ch = chars[i];
-            
             match state {
                 ScanState::Normal => {
                     // Skip whitespace
@@ -713,29 +664,24 @@ impl SyntaxHighlighter {
                         i += 1;
                         continue;
                     }
-                    
                     // Check for C/C++ preprocessor directives (#include, #define, etc.)
                     else if ch == '#' && (self.language == "c" || self.language == "cpp") &&
                             (i == 0 || (i > 0 && (chars[i-1] == '\n' || chars[i-1].is_whitespace()))) {
                         let directive_start = i;
                         let mut j = i + 1;
-                        
                         // Skip whitespace after #
                         while j < chars.len() && chars[j].is_whitespace() && chars[j] != '\n' {
                             j += 1;
                         }
-                        
                         // Read the directive name
                         if j < chars.len() && chars[j].is_alphabetic() {
                             while j < chars.len() && chars[j].is_alphabetic() {
                                 j += 1;
                             }
-                            
                             // Read to end of line
                             while j < chars.len() && chars[j] != '\n' {
                                 j += 1;
                             }
-                            
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::Attribute, // Preprocessor directives use attribute color
                                 start: directive_start,
@@ -758,7 +704,6 @@ impl SyntaxHighlighter {
                         let attr_start = i;
                         let mut j = i + 2;
                         let mut bracket_depth = 1;
-                        
                         while j < chars.len() && bracket_depth > 0 {
                             if chars[j] == '[' {
                                 bracket_depth += 1;
@@ -767,7 +712,6 @@ impl SyntaxHighlighter {
                             }
                             j += 1;
                         }
-                        
                         if bracket_depth == 0 {
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::Attribute,
@@ -789,7 +733,6 @@ impl SyntaxHighlighter {
                     else if ch == '\'' && self.language == "rust" {
                         if i + 1 < chars.len() {
                             let next_char = chars[i + 1];
-                            
                             // Check for lifetime parameter (starts with letter)
                             if next_char.is_alphabetic() || next_char == '_' {
                                 // Could be either a lifetime or a character literal
@@ -798,7 +741,6 @@ impl SyntaxHighlighter {
                                 while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
                                     j += 1;
                                 }
-                                
                                 // If the next character after the identifier is a quote, it's a char literal
                                 // Otherwise, it's a lifetime
                                 if j < chars.len() && chars[j] == '\'' {
@@ -835,13 +777,11 @@ impl SyntaxHighlighter {
                     else if (ch == '*' || ch == '_') && self.language == "markdown" {
                         let marker = ch;
                         let start = i;
-                        
                         // Check for bold (** or __)
                         if i + 1 < chars.len() && chars[i + 1] == marker {
                             // Bold marker
                             let mut j = i + 2;
                             let mut found_closing = false;
-                            
                             // Find the closing bold marker
                             while j + 1 < chars.len() {
                                 if chars[j] == marker && chars[j + 1] == marker {
@@ -851,7 +791,6 @@ impl SyntaxHighlighter {
                                 }
                                 j += 1;
                             }
-                            
                             if found_closing {
                                 tokens.push(SyntaxToken {
                                     token_type: TokenType::Keyword, // Bold uses keyword color
@@ -872,7 +811,6 @@ impl SyntaxHighlighter {
                             // Single marker (italic)
                             let mut j = i + 1;
                             let mut found_closing = false;
-                            
                             // Find the closing italic marker
                             while j < chars.len() && chars[j] != '\n' {
                                 if chars[j] == marker && (j + 1 >= chars.len() || chars[j + 1] != marker) {
@@ -882,7 +820,6 @@ impl SyntaxHighlighter {
                                 }
                                 j += 1;
                             }
-                            
                             if found_closing {
                                 tokens.push(SyntaxToken {
                                     token_type: TokenType::Type, // Italic uses type color
@@ -959,7 +896,6 @@ impl SyntaxHighlighter {
                             current_token_start = i;
                             let quote_char = ch;
                             i += 3; // Skip the triple quotes
-                            
                             // Find the closing triple quotes
                             let mut found_end = false;
                             while i + 2 < chars.len() {
@@ -970,12 +906,10 @@ impl SyntaxHighlighter {
                                 }
                                 i += 1;
                             }
-                            
                             if !found_end {
                                 // Unclosed triple-quoted string, highlight to end of line
                                 i = chars.len();
                             }
-                            
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::String, // Docstrings are strings
                                 start: current_token_start,
@@ -989,7 +923,6 @@ impl SyntaxHighlighter {
                             current_token_start = i;
                             let quote_char = ch;
                             i += 3; // Skip the triple quotes
-                            
                             // Find the closing triple quotes
                             let mut found_end = false;
                             while i + 2 < chars.len() {
@@ -1000,12 +933,10 @@ impl SyntaxHighlighter {
                                 }
                                 i += 1;
                             }
-                            
                             if !found_end {
                                 // Unclosed multi-line string
                                 i = chars.len();
                             }
-                            
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::String,
                                 start: current_token_start,
@@ -1025,7 +956,6 @@ impl SyntaxHighlighter {
                             // TOML multi-line literal string
                             current_token_start = i;
                             i += 3; // Skip the triple quotes
-                            
                             // Find the closing triple quotes (no escape processing)
                             let mut found_end = false;
                             while i + 2 < chars.len() {
@@ -1036,11 +966,9 @@ impl SyntaxHighlighter {
                                 }
                                 i += 1;
                             }
-                            
                             if !found_end {
                                 i = chars.len();
                             }
-                            
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::String,
                                 start: current_token_start,
@@ -1050,16 +978,13 @@ impl SyntaxHighlighter {
                             // Regular literal string (no escaping)
                             current_token_start = i;
                             i += 1;
-                            
                             // Find the closing quote
                             while i < chars.len() && chars[i] != '\'' {
                                 i += 1;
                             }
-                            
                             if i < chars.len() && chars[i] == '\'' {
                                 i += 1;
                             }
-                            
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::String,
                                 start: current_token_start,
@@ -1137,7 +1062,6 @@ impl SyntaxHighlighter {
                         let link_start = i;
                         let mut j = i + 1;
                         let mut found_closing = false;
-                        
                         // Find the closing ]
                         while j < chars.len() && chars[j] != '\n' {
                             if chars[j] == ']' {
@@ -1147,7 +1071,6 @@ impl SyntaxHighlighter {
                             }
                             j += 1;
                         }
-                        
                         if found_closing && j < chars.len() && chars[j] == '(' {
                             // This is a link
                             j += 1;
@@ -1186,12 +1109,10 @@ impl SyntaxHighlighter {
                     else if ch == ':' && i + 1 < chars.len() && chars[i + 1] == ':' && self.language == "sql" {
                         // Look ahead to see if this is followed by a type name
                         let mut j = i + 2;
-                        
                         // Skip optional whitespace
                         while j < chars.len() && chars[j].is_whitespace() && chars[j] != '\n' {
                             j += 1;
                         }
-                        
                         // Check if followed by a valid identifier (type name)
                         if j < chars.len() && (chars[j].is_alphabetic() || chars[j] == '_') {
                             // Scan the type name
@@ -1199,14 +1120,12 @@ impl SyntaxHighlighter {
                             while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
                                 j += 1;
                             }
-                            
                             // Create tokens for :: and the type
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::Operator,
                                 start: i,
                                 end: i + 2,
                             });
-                            
                             let type_name: String = chars[type_start..j].iter().collect();
                             // Check if it's a known SQL type
                             let token_type = if self.keywords.contains_key(type_name.to_uppercase().as_str()) ||
@@ -1216,13 +1135,11 @@ impl SyntaxHighlighter {
                                 // Even if not in our keyword list, treat it as a type in this context
                                 TokenType::Type
                             };
-                            
                             tokens.push(SyntaxToken {
                                 token_type,
                                 start: type_start,
                                 end: j,
                             });
-                            
                             i = j;
                         } else {
                             // Just :: operator
@@ -1263,7 +1180,6 @@ impl SyntaxHighlighter {
                             // HTML/XML comment
                             let comment_start = i;
                             i += 4;
-                            
                             // Find the closing -->
                             let mut found_end = false;
                             while i + 2 < chars.len() {
@@ -1274,11 +1190,9 @@ impl SyntaxHighlighter {
                                 }
                                 i += 1;
                             }
-                            
                             if !found_end {
                                 i = chars.len();
                             }
-                            
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::Comment,
                                 start: comment_start,
@@ -1288,19 +1202,16 @@ impl SyntaxHighlighter {
                             // Start of a tag
                             let tag_start = i;
                             let mut j = i + 1;
-                            
                             // Skip '/' for closing tags
                             if j < chars.len() && chars[j] == '/' {
                                 j += 1;
                             }
-                            
                             // Read the tag name
                             let tag_name_start = j;
                             while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '-' || chars[j] == '_') {
                                 j += 1;
                             }
                             let tag_name_end = j;
-                            
                             // Emit '<' or '</' as operator
                             if tag_name_start > i + 1 {
                                 // Closing tag
@@ -1317,7 +1228,6 @@ impl SyntaxHighlighter {
                                     end: i + 1,
                                 });
                             }
-                            
                             // Emit tag name
                             if tag_name_end > tag_name_start {
                                 tokens.push(SyntaxToken {
@@ -1326,10 +1236,8 @@ impl SyntaxHighlighter {
                                     end: tag_name_end,
                                 });
                             }
-                            
                             // Continue scanning from after tag name
                             i = tag_name_end;
-                            
                             // Process attributes until we find '>' or '/>'
                             while i < chars.len() && chars[i] != '>' {
                                 if chars[i].is_whitespace() {
@@ -1354,12 +1262,10 @@ impl SyntaxHighlighter {
                                         start: attr_start,
                                         end: i,
                                     });
-                                    
                                     // Skip whitespace
                                     while i < chars.len() && chars[i].is_whitespace() {
                                         i += 1;
                                     }
-                                    
                                     // Check for '='
                                     if i < chars.len() && chars[i] == '=' {
                                         tokens.push(SyntaxToken {
@@ -1368,12 +1274,10 @@ impl SyntaxHighlighter {
                                             end: i + 1,
                                         });
                                         i += 1;
-                                        
                                         // Skip whitespace
                                         while i < chars.len() && chars[i].is_whitespace() {
                                             i += 1;
                                         }
-                                        
                                         // Attribute value (string)
                                         if i < chars.len() && (chars[i] == '"' || chars[i] == '\'') {
                                             let quote = chars[i];
@@ -1401,7 +1305,6 @@ impl SyntaxHighlighter {
                                     i += 1;
                                 }
                             }
-                            
                             // Emit closing '>'
                             if i < chars.len() && chars[i] == '>' {
                                 tokens.push(SyntaxToken {
@@ -1542,31 +1445,25 @@ impl SyntaxHighlighter {
                         // Check if this is at the start of a value (after colon and whitespace)
                         let mut is_multiline_indicator = false;
                         let mut j = i - 1;
-                        
                         // Look back for a colon
                         while j > 0 && chars[j].is_whitespace() && chars[j] != '\n' {
                             j -= 1;
                         }
-                        
-        if chars[j] == ':' {
+                        if chars[j] == ':' {
                             is_multiline_indicator = true;
                         }
-                        
                         if is_multiline_indicator {
                             // This is a multi-line string indicator
                             let indicator_start = i;
                             let mut k = i + 1;
-                            
                             // Skip optional chomping indicators (+, -)
                             if k < chars.len() && (chars[k] == '+' || chars[k] == '-') {
                                 k += 1;
                             }
-                            
                             // Skip optional indentation indicator (digit)
                             if k < chars.len() && chars[k].is_ascii_digit() {
                                 k += 1;
                             }
-                            
                             // Alternatively, indentation indicator can come before chomping
                             if i + 1 < chars.len() && chars[i + 1].is_ascii_digit() {
                                 k = i + 2;
@@ -1574,13 +1471,11 @@ impl SyntaxHighlighter {
                                     k += 1;
                                 }
                             }
-                            
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::Operator, // Multi-line indicators use operator color
                                 start: indicator_start,
                                 end: k,
                             });
-                            
                             // The actual multi-line string content will be on subsequent lines
                             // and will be handled as normal text
                             i = k;
@@ -1599,13 +1494,11 @@ impl SyntaxHighlighter {
                         while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '-' || chars[j] == '.') {
                             j += 1;
                         }
-                        
                         // Skip whitespace
                         let mut k = j;
                         while k < chars.len() && chars[k].is_whitespace() && chars[k] != '\n' {
                             k += 1;
                         }
-                        
                         // Check if followed by colon
                         if k < chars.len() && chars[k] == ':' &&
                            (k + 1 >= chars.len() || chars[k + 1].is_whitespace() || chars[k + 1] == '\n') {
@@ -1631,13 +1524,11 @@ impl SyntaxHighlighter {
                         while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '-' || chars[j] == '.') {
                             j += 1;
                         }
-                        
                         // Skip whitespace
                         let mut k = j;
                         while k < chars.len() && chars[k].is_whitespace() && chars[k] != '\n' {
                             k += 1;
                         }
-                        
                         // Check if followed by =
                         if k < chars.len() && chars[k] == '=' {
                             // This is a key
@@ -1670,7 +1561,6 @@ impl SyntaxHighlighter {
                                     break;
                                 }
                             }
-                            
                             if !inside_tag {
                                 // Just regular text content, don't highlight
                                 let text_start = i;
@@ -1685,7 +1575,6 @@ impl SyntaxHighlighter {
                                 continue;
                             }
                         }
-                        
                         let (token, new_i) = self.scan_identifier(&chars, i);
                         tokens.push(token);
                         i = new_i;
@@ -1696,28 +1585,23 @@ impl SyntaxHighlighter {
                         let bracket_start = i;
                         let mut j = i + 1;
                         let mut double_bracket = false;
-                        
                         // Check for [[
                         if j < chars.len() && chars[j] == '[' {
                             double_bracket = true;
                             j += 1;
                         }
-                        
                         // Find the closing bracket(s)
                         let _content_start = j;
                         while j < chars.len() && chars[j] != ']' && chars[j] != '\n' {
                             j += 1;
                         }
-                        
                         if j < chars.len() && chars[j] == ']' {
                         let _content_end = j;
                             j += 1;
-                            
                             // For double brackets, check for the second ]
                             if double_bracket && j < chars.len() && chars[j] == ']' {
                                 j += 1;
                             }
-                            
                             // Emit the entire table header as a keyword
                             tokens.push(SyntaxToken {
                                 token_type: TokenType::Keyword,
@@ -1739,7 +1623,6 @@ impl SyntaxHighlighter {
                     else if ch == '$' && self.language == "makefile" && i + 1 < chars.len() {
                         let var_start = i;
                         i += 1;
-                        
                         if chars[i] == '(' || chars[i] == '{' {
                             let close_char = if chars[i] == '(' { ')' } else { '}' };
                             i += 1;
@@ -1777,7 +1660,6 @@ impl SyntaxHighlighter {
                     else if ch == '$' && self.language == "bash" && i + 1 < chars.len() {
                         let var_start = i;
                         i += 1;
-                        
                         if chars[i] == '{' {
                             // ${VAR} syntax
                             i += 1;
@@ -1827,7 +1709,6 @@ impl SyntaxHighlighter {
                         i = new_i;
                     }
                 }
-                
                 ScanState::InString { quote, escaped } => {
                     if escaped {
                         state = ScanState::InString { quote, escaped: false };
@@ -1848,12 +1729,10 @@ impl SyntaxHighlighter {
                         i += 1;
                     }
                 }
-                
                 ScanState::InSingleLineComment => {
                     // Single line comments continue until end of line
                     i += 1;
                 }
-                
                 ScanState::InMultiLineComment { depth } => {
                     if ch == '*' && i + 1 < chars.len() && chars[i + 1] == '/' {
                         if depth == 1 {
@@ -1876,7 +1755,6 @@ impl SyntaxHighlighter {
                         i += 1;
                     }
                 }
-                
                 ScanState::InRawString { delimiter_len } => {
                     if ch == '"' {
                         // Check if we have enough characters left for the closing delimiter
@@ -1910,7 +1788,6 @@ impl SyntaxHighlighter {
                 }
             }
         }
-        
         // Handle end of line
         match state {
             ScanState::Normal => {
@@ -1941,10 +1818,8 @@ impl SyntaxHighlighter {
                 });
             }
         }
-        
         // Post-process tokens to identify functions, attributes, etc.
         self.post_process_tokens(&mut tokens, &chars);
-        
         (tokens, state)
     }
 
@@ -1952,7 +1827,6 @@ impl SyntaxHighlighter {
         let mut i = start;
             let mut has_dot = false;
             let mut has_exp = false;
-        
         // Handle hex, octal, binary literals
         if i + 2 < chars.len() && chars[i] == '0' {
             if chars[i + 1] == 'x' || chars[i + 1] == 'X' {
@@ -1983,7 +1857,6 @@ impl SyntaxHighlighter {
                 i += 1;
             }
         }
-        
         // Handle decimal point
         if i < chars.len() && chars[i] == '.' && !has_dot {
             // Check if next char is a digit
@@ -1995,7 +1868,6 @@ impl SyntaxHighlighter {
                 }
             }
         }
-        
         // Handle scientific notation
         if i < chars.len() && (chars[i] == 'e' || chars[i] == 'E') && !has_exp {
             let exp_start = i;
@@ -2013,7 +1885,6 @@ impl SyntaxHighlighter {
                 i = exp_start;
             }
         }
-        
         // Handle type suffixes (language-specific)
         if self.language == "rust" {
             // Rust numeric suffixes: i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize, f32, f64
@@ -2044,7 +1915,6 @@ impl SyntaxHighlighter {
                 i += 1;
             }
         }
-        
         (SyntaxToken {
             token_type: TokenType::Number,
             start,
@@ -2054,18 +1924,14 @@ impl SyntaxHighlighter {
 
     fn scan_identifier(&self, chars: &[char], start: usize) -> (SyntaxToken, usize) {
         let mut i = start;
-        
         while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
             i += 1;
         }
-        
         let word: String = chars[start..i].iter().collect();
-        
         // Language-specific handling
         let token_type = match self.language.as_str() {
             // Markup and data languages - no keyword highlighting
             "markdown" | "html" | "xml" | "css" => TokenType::Identifier,
-            
             // JSON - only specific constants
             "json" => {
                 if matches!(word.as_str(), "true" | "false" | "null") {
@@ -2074,7 +1940,6 @@ impl SyntaxHighlighter {
                     TokenType::Identifier
                 }
             }
-            
             // YAML - more constants but still limited
             "yaml" => {
                 if matches!(word.as_str(), "true" | "false" | "null" | "yes" | "no" | "on" | "off") {
@@ -2083,7 +1948,6 @@ impl SyntaxHighlighter {
                     TokenType::Identifier
                 }
             }
-            
             // TOML - similar to JSON
             "toml" => {
                 if matches!(word.as_str(), "true" | "false") {
@@ -2092,7 +1956,6 @@ impl SyntaxHighlighter {
                     TokenType::Identifier
                 }
             }
-            
             // SQL - case insensitive keywords
             "sql" => {
                 if let Some(token_type) = self.keywords.get(word.as_str()) {
@@ -2105,7 +1968,6 @@ impl SyntaxHighlighter {
                     TokenType::Identifier
                 }
             }
-            
             // Dockerfile - keywords only at line start
             "dockerfile" => {
                 if let Some(token_type) = self.keywords.get(word.as_str()) {
@@ -2124,7 +1986,6 @@ impl SyntaxHighlighter {
                             j -= 1;
                         }
                     }
-                    
                     if at_line_start {
                         token_type.clone()
                     } else {
@@ -2134,7 +1995,6 @@ impl SyntaxHighlighter {
                     TokenType::Identifier
                 }
             }
-            
             // All other languages - normal keyword lookup
             _ => {
                 if let Some(token_type) = self.keywords.get(word.as_str()) {
@@ -2144,7 +2004,6 @@ impl SyntaxHighlighter {
                 }
             }
         };
-        
         (SyntaxToken {
             token_type,
             start,
@@ -2166,7 +2025,6 @@ impl SyntaxHighlighter {
                 }
             }
         }
-        
         // Single character punctuation
         (SyntaxToken {
             token_type: TokenType::Punctuation,
@@ -2188,12 +2046,10 @@ impl SyntaxHighlighter {
             }
             return;
         }
-        
         // Process tokens to identify functions, types, etc. for programming languages
         for i in 0..tokens.len() {
             if tokens[i].token_type == TokenType::Identifier {
                 let token_text: String = chars[tokens[i].start..tokens[i].end].iter().collect();
-                
                 // Check if followed by '(' for function calls - not in Markdown
                 if i + 1 < tokens.len() && 
                    (tokens[i + 1].token_type == TokenType::Punctuation || tokens[i + 1].token_type == TokenType::Operator) &&
@@ -2286,7 +2142,6 @@ impl SyntaxHighlighter {
                       chars[tokens[next_non_whitespace].start].is_whitespace() {
                     next_non_whitespace += 1;
                 }
-                
                 if next_non_whitespace < tokens.len() &&
                    tokens[next_non_whitespace].token_type == TokenType::Operator &&
                    tokens[next_non_whitespace].start < chars.len() &&
@@ -2309,7 +2164,6 @@ impl SyntaxHighlighter {
                       chars[tokens[next_non_whitespace].start].is_whitespace() {
                     next_non_whitespace += 1;
                 }
-                
                 if next_non_whitespace < tokens.len() &&
                    tokens[next_non_whitespace].token_type == TokenType::Operator &&
                    tokens[next_non_whitespace].start < chars.len() &&
@@ -2340,7 +2194,6 @@ impl SyntaxHighlighter {
         if self.language == "text" {
             return;
         }
-
         // Get the state from the previous line
         let start_state = if changed_line > 0 {
             self.line_states.get(&(changed_line - 1))
@@ -2349,46 +2202,36 @@ impl SyntaxHighlighter {
         } else {
             ScanState::Normal
         };
-
         // Scan the changed line
         let line_text = rope.line(changed_line).to_string();
         let (mut tokens, end_state) = self.scan_line(&line_text, start_state);
-        
         // Post-process tokens to identify functions, types, etc.
         let chars: Vec<char> = line_text.chars().collect();
         self.post_process_tokens(&mut tokens, &chars);
-        
         // Check if the end state changed
         let old_end_state = self.line_states.get(&changed_line)
             .map(|state| state.end_state);
-        
         self.line_states.insert(changed_line, LineState {
             tokens,
             end_state,
         });
-
         // If the end state changed, we need to update subsequent lines
         if old_end_state != Some(end_state) {
             let mut current_state = end_state;
-            
             for line_idx in (changed_line + 1)..rope.len_lines() {
                 let line_text = rope.line(line_idx).to_string();
                 let (tokens, new_end_state) = self.scan_line(&line_text, current_state);
-                
                 // Check if this line's end state also changed
                 let old_state = self.line_states.get(&line_idx)
                     .map(|state| state.end_state);
-                
                 self.line_states.insert(line_idx, LineState {
                     tokens,
                     end_state: new_end_state,
                 });
-                
                 // If the state didn't change, we can stop updating
                 if old_state == Some(new_end_state) {
                     break;
                 }
-                
                 current_state = new_end_state;
             }
         }
@@ -2398,7 +2241,6 @@ impl SyntaxHighlighter {
     pub fn insert_line(&mut self, rope: &Rope, at_line: usize) {
         // Shift all lines at or after the insertion point
         let mut new_states = HashMap::new();
-        
         for (line_idx, state) in &self.line_states {
             if *line_idx >= at_line {
                 new_states.insert(line_idx + 1, state.clone());
@@ -2406,9 +2248,7 @@ impl SyntaxHighlighter {
                 new_states.insert(*line_idx, state.clone());
             }
         }
-        
         self.line_states = new_states;
-        
         // Now update the inserted line and any affected subsequent lines
         self.update_line(rope, at_line);
     }
@@ -2417,10 +2257,8 @@ impl SyntaxHighlighter {
     pub fn delete_line(&mut self, rope: &Rope, deleted_line: usize) {
         // Remove the deleted line
         self.line_states.remove(&deleted_line);
-        
         // Shift all lines after the deletion point
         let mut new_states = HashMap::new();
-        
         for (line_idx, state) in &self.line_states {
             if *line_idx > deleted_line {
                 new_states.insert(line_idx - 1, state.clone());
@@ -2428,9 +2266,7 @@ impl SyntaxHighlighter {
                 new_states.insert(*line_idx, state.clone());
             }
         }
-        
-        self.line_states = new_states;
-        
+        self.line_states = new_states;        
         // Update the line that's now at the deleted position (if any)
         if deleted_line < rope.len_lines() {
             self.update_line(rope, deleted_line);

@@ -136,25 +136,26 @@ impl Ui {
             // Convert to ratatui Lines with syntax highlighting
             let lines: Vec<Line> = wrapped_lines.iter().map(|wl| {
                 // Apply horizontal offset only to non-virtual lines when word wrap is disabled
-                let displayed_content = if !config.word_wrap && wl.logical_line != usize::MAX {
+                let (displayed_content, effective_horizontal_offset) = if !config.word_wrap && wl.logical_line != usize::MAX {
                     // Apply horizontal scrolling
                     let chars: Vec<char> = wl.content.chars().collect();
                     if editor.horizontal_offset >= chars.len() {
-                        String::new() // Line is entirely scrolled off to the left
+                        (String::new(), editor.horizontal_offset) // Line is entirely scrolled off to the left
                     } else {
-                        chars[editor.horizontal_offset..].iter().collect()
+                        (chars[editor.horizontal_offset..].iter().collect(), editor.horizontal_offset)
                     }
                 } else {
-                    wl.content.clone()
+                    (wl.content.clone(), 0)
                 };
                 
                 let mut line = self.apply_syntax_highlighting_wrapped(
                     displayed_content, 
                     buffer, 
                     wl.logical_line, 
-                    wl.line_start_col + editor.horizontal_offset,
+                    wl.line_start_col,
                     config,
-                    editor
+                    editor,
+                    effective_horizontal_offset
                 );
                 if wl.logical_line == usize::MAX {
                     let virtual_color = config.theme.parse_color(&config.theme.colors.virtual_line);
@@ -757,7 +758,8 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         line_idx: usize, 
         segment_start: usize,
         config: &Config,
-        editor: &Editor
+        editor: &Editor,
+        horizontal_offset: usize
     ) -> Line<'static> {
         let text_chars: Vec<char> = text.chars().collect();
         let text_len = text_chars.len();
@@ -785,14 +787,14 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         // For character-precise selection or find matches, we need to split text at boundaries
         if let Some((sel_start, sel_end)) = selection_range {
             return self.apply_highlighting_with_precise_selection(
-                text, buffer, line_idx, segment_start, sel_start, sel_end, config, editor
+                text, buffer, line_idx, segment_start, sel_start, sel_end, config, editor, horizontal_offset
             );
         } else if has_find_matches {
             // No selection but we have find matches - create a dummy selection range to trigger precise highlighting
             let dummy_start = Position { line: usize::MAX, column: usize::MAX };
             let dummy_end = Position { line: usize::MAX, column: usize::MAX };
             return self.apply_highlighting_with_precise_selection(
-                text, buffer, line_idx, segment_start, dummy_start, dummy_end, config, editor
+                text, buffer, line_idx, segment_start, dummy_start, dummy_end, config, editor, horizontal_offset
             );
         }
         
@@ -814,21 +816,32 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             sorted_tokens.sort_by_key(|token| token.start);
 
             for token in &sorted_tokens {
-                // Skip tokens that are entirely outside this segment
-                if token.end <= segment_start || token.start >= segment_end {
+                // When horizontal scrolling is applied, we need to adjust token positions
+                // The tokens are positioned relative to the full line, but we're displaying
+                // a substring that starts at horizontal_offset
+                let adjusted_token_start = token.start.saturating_sub(horizontal_offset);
+                let adjusted_token_end = token.end.saturating_sub(horizontal_offset);
+                
+                // Skip tokens that are entirely outside this segment (accounting for horizontal scroll)
+                if adjusted_token_end <= segment_start || adjusted_token_start >= segment_end {
                     continue;
                 }
 
-                // Adjust token positions relative to this segment
-                let token_start_in_segment = if token.start >= segment_start {
-                    token.start - segment_start + indent_offset
+                let token_start_in_segment = if adjusted_token_start >= segment_start {
+                    // Token starts within or after this segment
+                    // Subtract segment_start to get position relative to displayed text
+                    (adjusted_token_start - segment_start) + indent_offset
                 } else {
+                    // Token starts before this segment, clamp to beginning
                     indent_offset
                 };
                 
-                let token_end_in_segment = if token.end <= segment_end {
-                    token.end - segment_start + indent_offset
+                let token_end_in_segment = if adjusted_token_end <= segment_end {
+                    // Token ends within this segment
+                    // Subtract segment_start to get position relative to displayed text
+                    (adjusted_token_end - segment_start) + indent_offset
                 } else {
+                    // Token extends beyond segment, clamp to end
                     text_len
                 };
 
@@ -1326,6 +1339,7 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         sel_end: Position,
         config: &Config,
         editor: &Editor,
+        horizontal_offset: usize,
     ) -> Line<'static> {
         let text_chars: Vec<char> = text.chars().collect();
         let text_len = text_chars.len();
@@ -1345,9 +1359,16 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         let mut spans = Vec::new();
         
         // Calculate selection boundaries within this segment
-        let selection_boundaries = self.calculate_selection_boundaries(
-            line_idx, segment_start, segment_end, sel_start, sel_end
-        );
+        // Adjust for horizontal offset when not in word wrap mode
+        let selection_boundaries = if horizontal_offset > 0 {
+            self.calculate_selection_boundaries(
+                line_idx, segment_start, segment_end, sel_start, sel_end, horizontal_offset
+            )
+        } else {
+            self.calculate_selection_boundaries(
+                line_idx, segment_start, segment_end, sel_start, sel_end, 0
+            )
+        };
         
         // Get syntax tokens for this line
         let tokens = buffer.syntax_highlighter.get_line_tokens(line_idx)
@@ -1387,13 +1408,17 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             }
         }
         
-        // Add token boundaries (adjusted for display)
+        // Add token boundaries (adjusted for display and horizontal offset)
         for token in &tokens {
-            if token.start >= segment_start && token.start <= segment_end {
-                all_boundaries.push(token.start - segment_start + indent_offset);
+            // Adjust token positions for horizontal scrolling
+            let adjusted_token_start = token.start.saturating_sub(horizontal_offset);
+            let adjusted_token_end = token.end.saturating_sub(horizontal_offset);
+            
+            if adjusted_token_start >= segment_start && adjusted_token_start <= segment_end {
+                all_boundaries.push(adjusted_token_start - segment_start + indent_offset);
             }
-            if token.end >= segment_start && token.end <= segment_end {
-                all_boundaries.push(token.end - segment_start + indent_offset);
+            if adjusted_token_end >= segment_start && adjusted_token_end <= segment_end {
+                all_boundaries.push(adjusted_token_end - segment_start + indent_offset);
             }
         }
         
@@ -1433,13 +1458,13 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
                 
                 let is_selected = self.is_segment_selected(
                     line_idx, original_start, original_end,
-                    sel_start, sel_end
+                    sel_start, sel_end, horizontal_offset
                 );
                 
                 // Find the appropriate token style for this segment
                 let style = self.get_segment_style(
                     &tokens, original_start, original_end,
-                    is_selected, config, line_idx, editor
+                    is_selected, config, line_idx, editor, horizontal_offset
                 );
                 
                 spans.push(Span::styled(segment_text, style));
@@ -1448,7 +1473,7 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         
         if spans.is_empty() {
             let is_selected = self.is_segment_selected(
-                line_idx, segment_start, segment_end, sel_start, sel_end
+                line_idx, segment_start, segment_end, sel_start, sel_end, horizontal_offset
             );
             let style = if is_selected {
                 let selection_bg = config.theme.parse_color(&config.theme.colors.selection_bg);
@@ -1472,25 +1497,30 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         segment_end: usize,
         sel_start: Position,
         sel_end: Position,
+        horizontal_offset: usize,
     ) -> Vec<usize> {
         let mut boundaries = Vec::new();
         
+        // Adjust selection columns for horizontal offset
+        let adjusted_sel_start_col = sel_start.column.saturating_sub(horizontal_offset);
+        let adjusted_sel_end_col = sel_end.column.saturating_sub(horizontal_offset);
+        
         // Single line selection
         if sel_start.line == sel_end.line && sel_start.line == line_idx {
-            if sel_start.column >= segment_start && sel_start.column <= segment_end {
-                boundaries.push(sel_start.column);
+            if adjusted_sel_start_col >= segment_start && adjusted_sel_start_col <= segment_end {
+                boundaries.push(adjusted_sel_start_col);
             }
-            if sel_end.column >= segment_start && sel_end.column <= segment_end {
-                boundaries.push(sel_end.column);
+            if adjusted_sel_end_col >= segment_start && adjusted_sel_end_col <= segment_end {
+                boundaries.push(adjusted_sel_end_col);
             }
         }
         // Multi-line selection
         else {
-            if line_idx == sel_start.line && sel_start.column >= segment_start && sel_start.column <= segment_end {
-                boundaries.push(sel_start.column);
+            if line_idx == sel_start.line && adjusted_sel_start_col >= segment_start && adjusted_sel_start_col <= segment_end {
+                boundaries.push(adjusted_sel_start_col);
             }
-            if line_idx == sel_end.line && sel_end.column >= segment_start && sel_end.column <= segment_end {
-                boundaries.push(sel_end.column);
+            if line_idx == sel_end.line && adjusted_sel_end_col >= segment_start && adjusted_sel_end_col <= segment_end {
+                boundaries.push(adjusted_sel_end_col);
             }
         }
         
@@ -1505,6 +1535,7 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         end_col: usize,
         sel_start: Position,
         sel_end: Position,
+        horizontal_offset: usize,
     ) -> bool {
         // Check for dummy selection (used when we only have find matches)
         if sel_start.line == usize::MAX && sel_end.line == usize::MAX {
@@ -1516,11 +1547,23 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             return false;
         }
         
+        // Adjust selection columns for horizontal offset when needed
+        let adjusted_sel_start_col = if horizontal_offset > 0 {
+            sel_start.column.saturating_sub(horizontal_offset)
+        } else {
+            sel_start.column
+        };
+        let adjusted_sel_end_col = if horizontal_offset > 0 {
+            sel_end.column.saturating_sub(horizontal_offset)
+        } else {
+            sel_end.column
+        };
+        
         // Single line selection
         if sel_start.line == sel_end.line {
             if line_idx == sel_start.line {
                 // Segment must be entirely within selection bounds
-                return start_col >= sel_start.column && end_col <= sel_end.column;
+                return start_col >= adjusted_sel_start_col && end_col <= adjusted_sel_end_col;
             }
             return false;
         }
@@ -1528,10 +1571,10 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         // Multi-line selection
         if line_idx == sel_start.line {
             // First line: segment must start at or after selection start
-            return start_col >= sel_start.column;
+            return start_col >= adjusted_sel_start_col;
         } else if line_idx == sel_end.line {
             // Last line: segment must end at or before selection end
-            return end_col <= sel_end.column;
+            return end_col <= adjusted_sel_end_col;
         } else {
             // Middle lines: entire segment is selected
             return true;
@@ -1548,6 +1591,7 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         config: &Config,
         line_idx: usize,
         editor: &Editor,
+        horizontal_offset: usize,
     ) -> Style {
         // Check if this segment is a find match
         let is_find_match = if editor.find_replace_mode && !editor.find_query.is_empty() {
@@ -1574,8 +1618,14 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         };
         
         // Find the token that contains this segment
+        // Need to adjust for horizontal offset when matching tokens
         let token_style = tokens.iter()
-            .find(|token| token.start <= start_col && token.end >= end_col)
+            .find(|token| {
+                // Adjust token positions for horizontal scrolling
+                let adjusted_start = token.start.saturating_sub(horizontal_offset);
+                let adjusted_end = token.end.saturating_sub(horizontal_offset);
+                adjusted_start <= start_col && adjusted_end >= end_col
+            })
             .map(|token| self.get_token_style(&token.token_type, config))
             .unwrap_or_else(|| {
                 let normal_color = config.theme.parse_color(&config.theme.colors.normal);

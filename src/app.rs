@@ -286,8 +286,16 @@ impl App {
                 let extend_selection = key.modifiers.contains(KeyModifiers::SHIFT);
                 self.handle_cursor_movement_down(extend_selection, content_width);
             }
-            KeyCode::Home => self.editor.move_cursor_home(),
-            KeyCode::End => self.editor.move_cursor_end(),
+            KeyCode::Home => {
+                if self.editor.move_cursor_home(&self.config, visible_lines) {
+                    self.needs_full_redraw = true;
+                }
+            }
+            KeyCode::End => {
+                if self.editor.move_cursor_end(&self.config, visible_lines) {
+                    self.needs_full_redraw = true;
+                }
+            }
             KeyCode::PageUp => {
                 self.editor.move_cursor_page_up(&self.config, visible_lines);
                 self.needs_full_redraw = true; // Force redraw after large jump
@@ -474,7 +482,9 @@ impl App {
             
             KeyCode::Home => {
                 if self.editor.find_replace_focus == FindReplaceFocus::Editor {
-                    self.editor.move_cursor_home();
+                    if self.editor.move_cursor_home(&self.config, self.calculate_visible_lines()) {
+                        self.needs_full_redraw = true;
+                    }
                 } else {
                     self.editor.move_find_replace_cursor_home();
                 }
@@ -482,7 +492,9 @@ impl App {
             
             KeyCode::End => {
                 if self.editor.find_replace_focus == FindReplaceFocus::Editor {
-                    self.editor.move_cursor_end();
+                    if self.editor.move_cursor_end(&self.config, self.calculate_visible_lines()) {
+                        self.needs_full_redraw = true;
+                    }
                 } else {
                     self.editor.move_find_replace_cursor_end();
                 }
@@ -993,7 +1005,9 @@ impl App {
                 buffer.cursor.clear_selection();
             }
         }
-        self.editor.move_cursor_left(content_width, &self.config, self.calculate_visible_lines());
+        if self.editor.move_cursor_left(content_width, &self.config, self.calculate_visible_lines()) {
+            self.needs_full_redraw = true;
+        }
     }
     
     
@@ -1005,7 +1019,9 @@ impl App {
                 buffer.cursor.clear_selection();
             }
         }
-        self.editor.move_cursor_right(content_width, &self.config, self.calculate_visible_lines());
+        if self.editor.move_cursor_right(content_width, &self.config, self.calculate_visible_lines()) {
+            self.needs_full_redraw = true;
+        }
     }
     
     fn handle_cursor_movement_up(&mut self, extend_selection: bool, content_width: usize) {

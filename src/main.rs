@@ -22,19 +22,15 @@ use std::io;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Thyme editor starting
-    
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
     // Create app and run
     let mut app = App::new().await?;
     let result = app.run(&mut terminal).await;
-
     // Cleanup terminal
     disable_raw_mode()?;
     execute!(
@@ -44,6 +40,5 @@ async fn main() -> Result<()> {
         DisableMouseCapture
     )?;
     terminal.show_cursor()?;
-
     result
 }

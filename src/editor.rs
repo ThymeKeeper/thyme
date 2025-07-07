@@ -872,20 +872,22 @@ impl Editor {
 	    }
 	}
 
-    pub fn move_cursor_left(&mut self, content_width: usize, config: &Config, visible_lines: usize) {
+    pub fn move_cursor_left(&mut self, content_width: usize, config: &Config, visible_lines: usize) -> bool {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.move_cursor_left();
             self.update_preferred_visual_column_with_width(content_width);
-            self.adjust_viewport(config, visible_lines);
+            return self.adjust_viewport(config, visible_lines);
         }
+        false
     }
 
-    pub fn move_cursor_right(&mut self, content_width: usize, config: &Config, visible_lines: usize) {
+    pub fn move_cursor_right(&mut self, content_width: usize, config: &Config, visible_lines: usize) -> bool {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.move_cursor_right();
             self.update_preferred_visual_column_with_width(content_width);
-            self.adjust_viewport(config, visible_lines);
+            return self.adjust_viewport(config, visible_lines);
         }
+        false
     }
 
     pub fn move_cursor_up(&mut self, word_wrap: bool, content_width: usize, config: &Config, visible_lines: usize) {
@@ -1167,16 +1169,18 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
 	    self.adjust_viewport(config, visible_lines);
 	}
 
-    pub fn move_cursor_home(&mut self) {
+    pub fn move_cursor_home(&mut self, config: &Config, visible_lines: usize) -> bool {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.move_cursor_home();
         }
+        self.adjust_viewport(config, visible_lines)
     }
 
-    pub fn move_cursor_end(&mut self) {
+    pub fn move_cursor_end(&mut self, config: &Config, visible_lines: usize) -> bool {
         if let Some(buffer) = self.current_buffer_mut() {
             buffer.move_cursor_end();
         }
+        self.adjust_viewport(config, visible_lines)
     }
 
     pub fn move_cursor_page_up(&mut self, config: &Config, visible_lines: usize) {
@@ -1278,12 +1282,18 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
         }
     }
     
-    pub fn adjust_viewport(&mut self, config: &Config, visible_lines: usize) {
+    pub fn adjust_viewport(&mut self, config: &Config, visible_lines: usize) -> bool {
+        let mut viewport_changed = false;
+        
         if config.word_wrap {
             self.adjust_viewport_word_wrap(config, visible_lines);
         } else {
             self.adjust_viewport_no_wrap(config, visible_lines);
+            // Also adjust horizontal viewport when word wrap is disabled
+            viewport_changed = self.adjust_horizontal_viewport(config);
         }
+        
+        viewport_changed
     }
     
     fn adjust_viewport_no_wrap(&mut self, config: &Config, visible_lines: usize) {
@@ -1664,6 +1674,51 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
             let max_offset = longest_line.saturating_sub(content_width);
             self.horizontal_offset = (self.horizontal_offset + columns).min(max_offset);
         }
+    }
+    
+    // Adjust horizontal viewport to follow cursor
+    // Returns true if the viewport was adjusted
+    fn adjust_horizontal_viewport(&mut self, config: &Config) -> bool {
+        // Extract needed values from buffer first to avoid borrowing issues
+        let (cursor_column, _cursor_line, line_len) = if let Some(buffer) = self.current_buffer() {
+            let line_text = buffer.get_line_text(buffer.cursor.line);
+            let line_len = line_text.chars().count();
+            (buffer.cursor.column, buffer.cursor.line, line_len)
+        } else {
+            return false;
+        };
+        
+        // Store the original offset to detect changes
+        let original_offset = self.horizontal_offset;
+        
+        // Get the actual content width available for text
+        let content_width = self.get_content_width(config);
+        
+        // Use configurable horizontal scrolloff
+        let h_scrolloff = config.horizontal_scrolloff as usize;
+        
+        // Calculate the visible range
+        let left_boundary = self.horizontal_offset + h_scrolloff;
+        let right_boundary = self.horizontal_offset + content_width.saturating_sub(h_scrolloff);
+        
+        // Adjust horizontal offset if cursor is outside the visible range
+        if cursor_column < left_boundary && cursor_column >= h_scrolloff {
+            // Cursor is too far left - scroll left
+            self.horizontal_offset = cursor_column.saturating_sub(h_scrolloff);
+        } else if cursor_column < h_scrolloff {
+            // Cursor is very close to start - reset to beginning
+            self.horizontal_offset = 0;
+        } else if cursor_column > right_boundary {
+            // Cursor is too far right - scroll right
+            self.horizontal_offset = cursor_column + h_scrolloff - content_width;
+            
+            // Don't scroll unnecessarily far
+            let max_offset = line_len.saturating_sub(content_width);
+            self.horizontal_offset = self.horizontal_offset.min(max_offset);
+        }
+        
+        // Return true if the offset changed
+        self.horizontal_offset != original_offset
     }
 
     pub async fn save_current_buffer_with_prompt(&mut self) -> Result<()> {

@@ -20,7 +20,6 @@ pub struct EventHandler {
 impl EventHandler {
     pub fn new() -> Result<Self> {
         let (sender, receiver) = mpsc::unbounded_channel();
-
         // Event handler for both keyboard and mouse events
         let event_sender = sender.clone();
         let event_handle = tokio::spawn(async move {
@@ -48,18 +47,15 @@ impl EventHandler {
                         break;
                     }
                 }
-                
                 // Small delay to prevent busy waiting
                 tokio::time::sleep(Duration::from_millis(16)).await;
             }
         });
-
         Ok(Self {
             receiver,
             _handles: vec![event_handle],
         })
     }
-
     pub async fn next(&mut self) -> Result<Option<Event>> {
         Ok(self.receiver.recv().await)
     }

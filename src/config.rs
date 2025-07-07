@@ -12,6 +12,8 @@ pub struct Config {
     pub word_wrap: bool,
     pub auto_save_delay_seconds: u64,
     pub scrolloff: u16,
+    #[serde(default = "default_horizontal_scrolloff")]
+    pub horizontal_scrolloff: u16,
     #[serde(skip)]
     pub theme: Theme,
     #[serde(default)]
@@ -141,6 +143,10 @@ pub struct ThemeColors {
     pub find_current_match_bg: String,
     #[serde(default = "default_find_current_match_fg")]
     pub find_current_match_fg: String,
+}
+
+fn default_horizontal_scrolloff() -> u16 {
+    5
 }
 
 fn default_virtual_line_color() -> String {
@@ -346,6 +352,7 @@ impl Default for Config {
             word_wrap: false,
             auto_save_delay_seconds: 0, // 0 = disabled
             scrolloff: 3,
+            horizontal_scrolloff: 5,
             theme: Theme::default(),
             theme_name: None,
             gutter: GutterMode::None,
