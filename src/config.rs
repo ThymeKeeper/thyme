@@ -14,6 +14,8 @@ pub struct Config {
     pub scrolloff: u16,
     #[serde(default = "default_horizontal_scrolloff")]
     pub horizontal_scrolloff: u16,
+    #[serde(default = "default_highlight_current_line")]
+    pub highlight_current_line: bool,
     #[serde(skip)]
     pub theme: Theme,
     #[serde(default)]
@@ -143,10 +145,18 @@ pub struct ThemeColors {
     pub find_current_match_bg: String,
     #[serde(default = "default_find_current_match_fg")]
     pub find_current_match_fg: String,
+    
+    // Current line highlighting
+    #[serde(default = "default_current_line_bg")]
+    pub current_line_bg: String,
 }
 
 fn default_horizontal_scrolloff() -> u16 {
     5
+}
+
+fn default_highlight_current_line() -> bool {
+    true
 }
 
 fn default_virtual_line_color() -> String {
@@ -168,6 +178,10 @@ fn default_find_current_match_bg() -> String {
 
 fn default_find_current_match_fg() -> String {
     "#000000".to_string() // Black foreground for contrast
+}
+
+fn default_current_line_bg() -> String {
+    "#2a2a2a".to_string() // Very subtle background highlight
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,6 +277,7 @@ impl Default for Theme {
                 find_match_fg: "#ffffff".to_string(),   // White text for find matches
                 find_current_match_bg: "#aaaa00".to_string(), // Bright yellow for current match
                 find_current_match_fg: "#000000".to_string(), // Black text for contrast
+                current_line_bg: "#242424".to_string(), // Very subtle current line highlight
             },
             styles: ThemeStyles::default(),
         }
@@ -353,6 +368,7 @@ impl Default for Config {
             auto_save_delay_seconds: 0, // 0 = disabled
             scrolloff: 3,
             horizontal_scrolloff: 5,
+            highlight_current_line: true,
             theme: Theme::default(),
             theme_name: None,
             gutter: GutterMode::None,
@@ -561,6 +577,7 @@ impl Config {
                 find_match_fg: "#f8f8f2".to_string(),
                 find_current_match_bg: "#e6db74".to_string(), // String color (yellow)
                 find_current_match_fg: "#272822".to_string(), // Background color
+                current_line_bg: "#3e3d32".to_string(), // Slightly lighter than background
             },
             styles: ThemeStyles::default(),
         };
@@ -607,6 +624,7 @@ impl Config {
                 find_match_fg: "#f8f8f2".to_string(),
                 find_current_match_bg: "#f1fa8c".to_string(), // String color (yellow)
                 find_current_match_fg: "#282a36".to_string(), // Background color
+                current_line_bg: "#44475a".to_string(), // Same as selection color
             },
             styles: ThemeStyles::default(),
         };
@@ -653,6 +671,7 @@ impl Config {
                 find_match_fg: "#eee8d5".to_string(), // Light text
                 find_current_match_bg: "#b58900".to_string(), // Type color (yellow)
                 find_current_match_fg: "#002b36".to_string(), // Background color
+                current_line_bg: "#073642".to_string(), // Slightly lighter than background
             },
             styles: ThemeStyles::default(),
         };
@@ -699,6 +718,7 @@ impl Config {
                 find_match_fg: "#eceff4".to_string(),
                 find_current_match_bg: "#ebcb8b".to_string(), // Yellow/orange
                 find_current_match_fg: "#2e3440".to_string(), // Dark background
+                current_line_bg: "#2e3440".to_string(), // Slightly lighter than custom dark background
             },
             styles: ThemeStyles::default(),
         };

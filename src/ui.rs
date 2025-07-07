@@ -167,7 +167,42 @@ impl Ui {
             let bg_color = config.theme.parse_color(&config.theme.colors.background);
             let fg_color = config.theme.parse_color(&config.theme.colors.foreground);
 
-            let paragraph = Paragraph::new(lines)
+            // Apply current line highlighting if enabled
+            let lines_with_current_line: Vec<Line> = if config.highlight_current_line {
+                let current_line_bg = config.theme.parse_color(&config.theme.colors.current_line_bg);
+                wrapped_lines.iter().zip(lines.into_iter()).map(|(wl, mut line)| {
+                    if wl.logical_line == buffer.cursor.line && wl.logical_line != usize::MAX {
+                        // Calculate the total width of existing content
+                        let content_width: usize = line.spans.iter().map(|span| span.content.len()).sum();
+                        let viewport_width = content_area.width as usize;
+                        
+                        // Apply current line background to all spans in the line
+                        let mut spans: Vec<Span> = line.spans.into_iter().map(|span| {
+                            // Only add background if the span doesn't already have one
+                            if span.style.bg.is_none() {
+                                span.patch_style(Style::default().bg(current_line_bg))
+                            } else {
+                                span
+                            }
+                        }).collect();
+                        
+                        // If the line is shorter than the viewport, add padding to fill the rest
+                        if content_width < viewport_width {
+                            let padding_width = viewport_width - content_width;
+                            let padding = " ".repeat(padding_width);
+                            spans.push(Span::styled(padding, Style::default().bg(current_line_bg)));
+                        }
+                        
+                        Line::from(spans)
+                    } else {
+                        line
+                    }
+                }).collect()
+            } else {
+                lines
+            };
+            
+            let paragraph = Paragraph::new(lines_with_current_line)
                 .style(Style::default().bg(bg_color).fg(fg_color));
 
             f.render_widget(paragraph, content_area);
