@@ -506,16 +506,21 @@ impl Editor {
             return;
         }
 
+        // Convert query to lowercase for case-insensitive search
+        let query_lower = self.find_query.to_lowercase();
+
         // Collect matches first to avoid borrowing issues
         let mut matches = Vec::new();
         let (cursor_line, cursor_col) = if let Some(buffer) = self.current_buffer() {
             let total_lines = buffer.rope.len_lines();
             for line_idx in 0..total_lines {
                 let line_text = buffer.get_line_text(line_idx);
+                let line_lower = line_text.to_lowercase();
                 let mut search_start = 0;
                 
-                while let Some(match_pos) = line_text[search_start..].find(&self.find_query) {
+                while let Some(match_pos) = line_lower[search_start..].find(&query_lower) {
                     let absolute_pos = search_start + match_pos;
+                    // Use the original query length for the match span
                     matches.push((
                         line_idx,
                         absolute_pos,
