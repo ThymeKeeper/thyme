@@ -29,6 +29,7 @@ pub struct Editor {
     // Filename prompt mode
     pub filename_prompt_mode: bool,
     pub filename_prompt_text: String,
+    pub filename_cursor_pos: usize,
     pub paste_in_progress: bool,
     pub paste_progress: Option<String>,
     // Find/Replace mode
@@ -40,6 +41,8 @@ pub struct Editor {
     pub find_replace_focus: FindReplaceFocus,
     pub find_cursor_pos: usize, // Cursor position within find field
     pub replace_cursor_pos: usize, // Cursor position within replace field
+    pub find_selection_start: Option<usize>, // Selection start in find field
+    pub replace_selection_start: Option<usize>, // Selection start in replace field
     // Save prompt mode
     pub save_prompt_mode: bool,
 }
@@ -69,6 +72,7 @@ impl Editor {
             help_scroll_offset: 0,
             filename_prompt_mode: false,
             filename_prompt_text: String::new(),
+            filename_cursor_pos: 0,
             paste_in_progress: false,
             paste_progress: None,
             find_replace_mode: false,
@@ -79,6 +83,8 @@ impl Editor {
             find_replace_focus: FindReplaceFocus::FindField,
             find_cursor_pos: 0,
             replace_cursor_pos: 0,
+            find_selection_start: None,
+            replace_selection_start: None,
             save_prompt_mode: false,
         }
     }
@@ -304,6 +310,8 @@ impl Editor {
     pub fn enter_find_replace_mode(&mut self) {
         self.find_replace_mode = true;
         self.find_replace_focus = FindReplaceFocus::FindField;
+        self.find_selection_start = None;
+        self.replace_selection_start = None;
         
         // If there's selected text, use it as the initial search query
         if let Some(buffer) = self.current_buffer() {
@@ -330,14 +338,20 @@ impl Editor {
         self.replace_cursor_pos = 0;
         self.find_query.clear();
         self.replace_text.clear();
+        self.find_selection_start = None;
+        self.replace_selection_start = None;
     }
 
     pub fn add_char_to_find_query(&mut self, c: char) {
         if self.find_replace_focus == FindReplaceFocus::FindField {
+            // Delete any selected text first
+            self.delete_find_field_selection();
             self.find_query.insert(self.find_cursor_pos, c);
             self.find_cursor_pos += 1;
             self.update_find_matches();
         } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            // Delete any selected text first
+            self.delete_replace_field_selection();
             self.replace_text.insert(self.replace_cursor_pos, c);
             self.replace_cursor_pos += 1;
         }
@@ -345,14 +359,45 @@ impl Editor {
 
     pub fn backspace_find_replace_field(&mut self) {
         if self.find_replace_focus == FindReplaceFocus::FindField {
-            if self.find_cursor_pos > 0 {
+            // If there's a selection, delete it
+            if self.find_selection_start.is_some() {
+                self.delete_find_field_selection();
+                self.update_find_matches();
+            } else if self.find_cursor_pos > 0 {
+                // Otherwise, delete one character
                 self.find_cursor_pos -= 1;
                 self.find_query.remove(self.find_cursor_pos);
                 self.update_find_matches();
             }
         } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
-            if self.replace_cursor_pos > 0 {
+            // If there's a selection, delete it
+            if self.replace_selection_start.is_some() {
+                self.delete_replace_field_selection();
+            } else if self.replace_cursor_pos > 0 {
+                // Otherwise, delete one character
                 self.replace_cursor_pos -= 1;
+                self.replace_text.remove(self.replace_cursor_pos);
+            }
+        }
+    }
+
+    pub fn delete_find_replace_field(&mut self) {
+        if self.find_replace_focus == FindReplaceFocus::FindField {
+            // If there's a selection, delete it
+            if self.find_selection_start.is_some() {
+                self.delete_find_field_selection();
+                self.update_find_matches();
+            } else if self.find_cursor_pos < self.find_query.len() {
+                // Otherwise, delete one character forward
+                self.find_query.remove(self.find_cursor_pos);
+                self.update_find_matches();
+            }
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            // If there's a selection, delete it
+            if self.replace_selection_start.is_some() {
+                self.delete_replace_field_selection();
+            } else if self.replace_cursor_pos < self.replace_text.len() {
+                // Otherwise, delete one character forward
                 self.replace_text.remove(self.replace_cursor_pos);
             }
         }
@@ -363,10 +408,12 @@ impl Editor {
             if self.find_cursor_pos > 0 {
                 self.find_cursor_pos -= 1;
             }
+            self.find_selection_start = None; // Clear selection
         } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
             if self.replace_cursor_pos > 0 {
                 self.replace_cursor_pos -= 1;
             }
+            self.replace_selection_start = None; // Clear selection
         }
     }
     
@@ -375,7 +422,45 @@ impl Editor {
             if self.find_cursor_pos < self.find_query.len() {
                 self.find_cursor_pos += 1;
             }
+            self.find_selection_start = None; // Clear selection
         } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            if self.replace_cursor_pos < self.replace_text.len() {
+                self.replace_cursor_pos += 1;
+            }
+            self.find_selection_start = None; // Clear selection
+        }
+    }
+
+    pub fn move_find_replace_cursor_left_with_selection(&mut self) {
+        if self.find_replace_focus == FindReplaceFocus::FindField {
+            if self.find_selection_start.is_none() {
+                self.find_selection_start = Some(self.find_cursor_pos);
+            }
+            if self.find_cursor_pos > 0 {
+                self.find_cursor_pos -= 1;
+            }
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            if self.replace_selection_start.is_none() {
+                self.replace_selection_start = Some(self.replace_cursor_pos);
+            }
+            if self.replace_cursor_pos > 0 {
+                self.replace_cursor_pos -= 1;
+            }
+        }
+    }
+    
+    pub fn move_find_replace_cursor_right_with_selection(&mut self) {
+        if self.find_replace_focus == FindReplaceFocus::FindField {
+            if self.find_selection_start.is_none() {
+                self.find_selection_start = Some(self.find_cursor_pos);
+            }
+            if self.find_cursor_pos < self.find_query.len() {
+                self.find_cursor_pos += 1;
+            }
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            if self.replace_selection_start.is_none() {
+                self.replace_selection_start = Some(self.replace_cursor_pos);
+            }
             if self.replace_cursor_pos < self.replace_text.len() {
                 self.replace_cursor_pos += 1;
             }
@@ -385,20 +470,27 @@ impl Editor {
     pub fn move_find_replace_cursor_home(&mut self) {
         if self.find_replace_focus == FindReplaceFocus::FindField {
             self.find_cursor_pos = 0;
+            self.find_selection_start = None; // Clear selection
         } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
             self.replace_cursor_pos = 0;
+            self.find_selection_start = None; // Clear selection
         }
     }
     
     pub fn move_find_replace_cursor_end(&mut self) {
         if self.find_replace_focus == FindReplaceFocus::FindField {
             self.find_cursor_pos = self.find_query.len();
+            self.find_selection_start = None; // Clear selection
         } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
             self.replace_cursor_pos = self.replace_text.len();
+            self.find_selection_start = None; // Clear selection
         }
     }
 
     pub fn toggle_find_replace_focus(&mut self) {
+        // Clear any selections when switching focus
+        self.find_selection_start = None;
+        self.replace_selection_start = None;
         self.find_replace_focus = match self.find_replace_focus {
             FindReplaceFocus::FindField => FindReplaceFocus::ReplaceField,
             FindReplaceFocus::ReplaceField => FindReplaceFocus::Editor,
@@ -613,6 +705,111 @@ impl Editor {
                 self.current_match_index.map(|i| i + 1).unwrap_or(0),
                 self.find_matches.len()
             ))
+        }
+    }
+
+    // Find/Replace field selection and clipboard operations
+    pub fn select_all_find_field(&mut self) {
+        if self.find_replace_focus == FindReplaceFocus::FindField {
+            self.find_selection_start = Some(0);
+            self.find_cursor_pos = self.find_query.len();
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            self.replace_selection_start = Some(0);
+            self.replace_cursor_pos = self.replace_text.len();
+        }
+    }
+
+    pub fn copy_find_field_selection(&self) -> Result<()> {
+        let text_to_copy = if self.find_replace_focus == FindReplaceFocus::FindField {
+            self.get_find_field_selected_text()
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            self.get_replace_field_selected_text()
+        } else {
+            None
+        };
+
+        if let Some(text) = text_to_copy {
+            let mut clipboard = arboard::Clipboard::new()?;
+            clipboard.set_text(text)?;
+        }
+        Ok(())
+    }
+
+    pub fn cut_find_field_selection(&mut self) -> Result<()> {
+        // First copy the selected text
+        self.copy_find_field_selection()?;
+        
+        // Then delete it
+        if self.find_replace_focus == FindReplaceFocus::FindField {
+            self.delete_find_field_selection();
+            self.update_find_matches();
+        } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+            self.delete_replace_field_selection();
+        }
+        
+        Ok(())
+    }
+
+    pub fn paste_to_find_field(&mut self) -> Result<()> {
+        let mut clipboard = arboard::Clipboard::new()?;
+        if let Ok(text) = clipboard.get_text() {
+            if self.find_replace_focus == FindReplaceFocus::FindField {
+                // Delete any selected text first
+                self.delete_find_field_selection();
+                
+                // Insert pasted text
+                self.find_query.insert_str(self.find_cursor_pos, &text);
+                self.find_cursor_pos += text.len();
+                self.update_find_matches();
+            } else if self.find_replace_focus == FindReplaceFocus::ReplaceField {
+                // Delete any selected text first
+                self.delete_replace_field_selection();
+                
+                // Insert pasted text
+                self.replace_text.insert_str(self.replace_cursor_pos, &text);
+                self.replace_cursor_pos += text.len();
+            }
+        }
+        Ok(())
+    }
+
+    fn get_find_field_selected_text(&self) -> Option<String> {
+        if let Some(start) = self.find_selection_start {
+            let end = self.find_cursor_pos;
+            let (start, end) = if start <= end { (start, end) } else { (end, start) };
+            Some(self.find_query[start..end].to_string())
+        } else {
+            None
+        }
+    }
+
+    fn get_replace_field_selected_text(&self) -> Option<String> {
+        if let Some(start) = self.replace_selection_start {
+            let end = self.replace_cursor_pos;
+            let (start, end) = if start <= end { (start, end) } else { (end, start) };
+            Some(self.replace_text[start..end].to_string())
+        } else {
+            None
+        }
+    }
+
+    fn delete_find_field_selection(&mut self) {
+        if let Some(start) = self.find_selection_start {
+            let end = self.find_cursor_pos;
+            let (start, end) = if start <= end { (start, end) } else { (end, start) };
+            self.find_query.drain(start..end);
+            self.find_cursor_pos = start;
+            self.find_selection_start = None;
+        }
+    }
+
+    fn delete_replace_field_selection(&mut self) {
+        if let Some(start) = self.replace_selection_start {
+            let end = self.replace_cursor_pos;
+            let (start, end) = if start <= end { (start, end) } else { (end, start) };
+            self.replace_text.drain(start..end);
+            self.replace_cursor_pos = start;
+            self.replace_selection_start = None;
         }
     }
 
@@ -1350,14 +1547,45 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
     pub fn exit_filename_prompt_mode(&mut self) {
         self.filename_prompt_mode = false;
         self.filename_prompt_text.clear();
+        self.filename_cursor_pos = 0;
     }
 
     pub fn add_char_to_filename_prompt(&mut self, c: char) {
-        self.filename_prompt_text.push(c);
+        self.filename_prompt_text.insert(self.filename_cursor_pos, c);
+        self.filename_cursor_pos += 1;
     }
 
     pub fn backspace_filename_prompt(&mut self) {
-        self.filename_prompt_text.pop();
+        if self.filename_cursor_pos > 0 {
+            self.filename_cursor_pos -= 1;
+            self.filename_prompt_text.remove(self.filename_cursor_pos);
+        }
+    }
+
+    pub fn move_filename_cursor_left(&mut self) {
+        if self.filename_cursor_pos > 0 {
+            self.filename_cursor_pos -= 1;
+        }
+    }
+
+    pub fn move_filename_cursor_right(&mut self) {
+        if self.filename_cursor_pos < self.filename_prompt_text.len() {
+            self.filename_cursor_pos += 1;
+        }
+    }
+
+    pub fn move_filename_cursor_home(&mut self) {
+        self.filename_cursor_pos = 0;
+    }
+
+    pub fn move_filename_cursor_end(&mut self) {
+        self.filename_cursor_pos = self.filename_prompt_text.len();
+    }
+
+    pub fn delete_char_in_filename_prompt(&mut self) {
+        if self.filename_cursor_pos < self.filename_prompt_text.len() {
+            self.filename_prompt_text.remove(self.filename_cursor_pos);
+        }
     }
 
     pub async fn save_with_filename(&mut self) -> Result<()> {

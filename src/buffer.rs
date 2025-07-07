@@ -808,7 +808,7 @@ impl Buffer {
     }
     
     // Force syntax highlighting update
-    fn force_syntax_update(&mut self) {
+    pub fn force_syntax_update(&mut self) {
         if self.language != "text" {
             self.syntax_highlighter.update(&self.rope);
             self.needs_syntax_update = false;
@@ -1333,7 +1333,7 @@ impl Buffer {
     
     /// Dedent (unindent) the current line or all selected lines
     pub fn dedent_lines(&mut self) {
-        const INDENT_SIZE: usize = 4;
+    const INDENT_SIZE: usize = 4;
         
         if let Some((start, end)) = self.cursor.get_selection_range() {
             // Multiple lines selected - dedent all of them

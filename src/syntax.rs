@@ -1510,7 +1510,7 @@ impl SyntaxHighlighter {
                     }
                     // Check for YAML tags (!tag)
                     else if ch == '!' && self.language == "yaml" {
-                        let tag_start = i;
+            let tag_start = i;
                         let mut j = i + 1;
                         // Skip the second ! for !!tags
                         if j < chars.len() && chars[j] == '!' {
@@ -1548,7 +1548,7 @@ impl SyntaxHighlighter {
                             j -= 1;
                         }
                         
-                        if j >= 0 && chars[j] == ':' {
+        if chars[j] == ':' {
                             is_multiline_indicator = true;
                         }
                         
@@ -1657,7 +1657,7 @@ impl SyntaxHighlighter {
                     // Check for identifiers and keywords
                     else if ch.is_alphabetic() || ch == '_' {
                         // Special handling for HTML/XML - only highlight within tags
-                        if (self.language == "html" || self.language == "xml") {
+    if self.language == "html" || self.language == "xml" {
                             // Check if we're inside a tag by looking backwards for '<'
                             let mut inside_tag = false;
                             let mut j = i;
@@ -1704,13 +1704,13 @@ impl SyntaxHighlighter {
                         }
                         
                         // Find the closing bracket(s)
-                        let content_start = j;
+                        let _content_start = j;
                         while j < chars.len() && chars[j] != ']' && chars[j] != '\n' {
                             j += 1;
                         }
                         
                         if j < chars.len() && chars[j] == ']' {
-                            let content_end = j;
+                        let _content_end = j;
                             j += 1;
                             
                             // For double brackets, check for the second ]
@@ -1950,8 +1950,8 @@ impl SyntaxHighlighter {
 
     fn scan_number(&self, chars: &[char], start: usize) -> (SyntaxToken, usize) {
         let mut i = start;
-        let mut has_dot = false;
-        let mut has_exp = false;
+            let mut has_dot = false;
+            let mut has_exp = false;
         
         // Handle hex, octal, binary literals
         if i + 2 < chars.len() && chars[i] == '0' {

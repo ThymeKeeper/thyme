@@ -135,6 +135,9 @@ impl App {
                             KeyCode::Backspace => {
                                 self.editor.backspace_filename_prompt();
                             }
+                            KeyCode::Delete => {
+                                self.editor.delete_char_in_filename_prompt();
+                            }
                             KeyCode::Enter => {
                                 if let Err(e) = self.editor.save_with_filename().await {
                                     eprintln!("Failed to save: {}", e);
@@ -144,6 +147,18 @@ impl App {
                             }
                             KeyCode::Esc => {
                                 self.editor.exit_filename_prompt_mode();
+                            }
+                            KeyCode::Left => {
+                                self.editor.move_filename_cursor_left();
+                            }
+                            KeyCode::Right => {
+                                self.editor.move_filename_cursor_right();
+                            }
+                            KeyCode::Home => {
+                                self.editor.move_filename_cursor_home();
+                            }
+                            KeyCode::End => {
+                                self.editor.move_filename_cursor_end();
                             }
                             _ => {} // Ignore other keys in filename prompt mode
                         }
@@ -347,12 +362,56 @@ impl App {
             KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.editor.redo();
             }
+
+            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.editor.find_replace_focus != FindReplaceFocus::Editor {
+                    self.editor.select_all_find_field();
+                } else {
+                    self.editor.select_all();
+                }
+            }
             
-            KeyCode::Char(c) => {
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if self.editor.find_replace_focus != FindReplaceFocus::Editor {
                     self.editor.add_char_to_find_query(c);
                 } else {
                     self.editor.insert_char(c, self.calculate_content_width());
+                }
+            }
+
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.editor.find_replace_focus != FindReplaceFocus::Editor {
+                    if let Err(e) = self.editor.copy_find_field_selection() {
+                        eprintln!("Failed to copy: {}", e);
+                    }
+                } else {
+                    if let Err(e) = self.editor.copy_selection() {
+                        eprintln!("Failed to copy: {}", e);
+                    }
+                }
+            }
+            
+            KeyCode::Char('x') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.editor.find_replace_focus != FindReplaceFocus::Editor {
+                    if let Err(e) = self.editor.cut_find_field_selection() {
+                        eprintln!("Failed to cut: {}", e);
+                    }
+                } else {
+                    if let Err(e) = self.editor.cut_selection() {
+                        eprintln!("Failed to cut: {}", e);
+                    }
+                }
+            }
+            
+            KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.editor.find_replace_focus != FindReplaceFocus::Editor {
+                    if let Err(e) = self.editor.paste_to_find_field() {
+                        eprintln!("Failed to paste: {}", e);
+                    }
+                } else {
+                    if let Err(e) = self.editor.paste_from_clipboard() {
+                        eprintln!("Failed to paste: {}", e);
+                    }
                 }
             }
             
@@ -365,6 +424,15 @@ impl App {
                         &self.config, 
                         self.calculate_visible_lines()
                     );
+                }
+            }
+
+            KeyCode::Delete => {
+                if self.editor.find_replace_focus == FindReplaceFocus::Editor {
+                    self.editor.delete_char_forwards();
+                } else {
+                    // Handle delete in find/replace fields
+                    self.editor.delete_find_replace_field();
                 }
             }
             
@@ -384,7 +452,11 @@ impl App {
                 if self.editor.find_replace_focus == FindReplaceFocus::Editor {
                     self.handle_cursor_movement_left(key.modifiers.contains(KeyModifiers::SHIFT), self.calculate_content_width());
                 } else {
-                    self.editor.move_find_replace_cursor_left();
+                    if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        self.editor.move_find_replace_cursor_left_with_selection();
+                    } else {
+                        self.editor.move_find_replace_cursor_left();
+                    }
                 }
             }
             
@@ -392,7 +464,11 @@ impl App {
                 if self.editor.find_replace_focus == FindReplaceFocus::Editor {
                     self.handle_cursor_movement_right(key.modifiers.contains(KeyModifiers::SHIFT), self.calculate_content_width());
                 } else {
-                    self.editor.move_find_replace_cursor_right();
+                    if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        self.editor.move_find_replace_cursor_right_with_selection();
+                    } else {
+                        self.editor.move_find_replace_cursor_right();
+                    }
                 }
             }
             
@@ -773,7 +849,30 @@ impl App {
             self.editor.adjust_viewport(&self.config, self.calculate_visible_lines());
             return Ok(true);
         }
-
+        // Save-as keybinding
+        if key == keybindings.save_as {
+            // Get the current filename first to avoid borrow conflicts
+            let filename_to_use = if let Some(buffer) = self.editor.current_buffer() {
+                if let Some(path) = &buffer.file_path {
+                    path.file_name()
+                        .and_then(|f| f.to_str())
+                        .map(|s| s.to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            
+            // Now we can modify the editor without borrow conflicts
+            self.editor.enter_filename_prompt_mode();
+            if let Some(filename) = filename_to_use {
+                let filename_len = filename.len();
+                self.editor.filename_prompt_text = filename;
+                self.editor.filename_cursor_pos = filename_len;
+            }
+            return Ok(true);
+        }
         Ok(false)
     }
 

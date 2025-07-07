@@ -615,7 +615,7 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
     ) -> (Vec<WrappedLine>, Option<(usize, usize)>) {
         let mut wrapped_lines = Vec::new();
         let mut cursor_visual_pos = None;
-        let scrolloff = config.scrolloff as usize;
+         let _scrolloff = config.scrolloff as usize;
         let total_file_lines = buffer.rope.len_lines();
         
         // In word-wrap mode, viewport_line IS the visual line directly
@@ -655,10 +655,9 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             };
             
             let line_wrapped = self.wrap_line(line_text_for_display, content_width);
-            let num_visual_lines = line_wrapped.len().max(1);
             
             // Check if any of this logical line's visual lines are in our viewport
-            for (segment_idx, (wrapped_content, start_col)) in line_wrapped.iter().enumerate() {
+             for (_, (wrapped_content, start_col)) in line_wrapped.iter().enumerate() {
                 // Skip visual lines before our viewport
                 if current_visual_line < start_visual_line {
                     current_visual_line += 1;
@@ -1014,30 +1013,76 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         
         // Draw find field
         let find_label = "Find: ";
-        let find_content = format!("{}{}", find_label, editor.find_query);
+        let find_text = &editor.find_query;
         let find_style = if editor.find_replace_focus == FindReplaceFocus::FindField {
             Style::default().bg(selection_bg).fg(selection_fg)
         } else {
             Style::default().fg(fg_color)
         };
         
-        let find_paragraph = Paragraph::new(find_content)
-            .style(find_style)
+        // Create spans for find field with selection
+        let mut find_spans = vec![Span::styled(find_label, find_style)];
+        
+        if let Some(sel_start) = editor.find_selection_start {
+            let sel_end = editor.find_cursor_pos;
+            let (start, end) = if sel_start <= sel_end { (sel_start, sel_end) } else { (sel_end, sel_start) };
+            
+            // Text before selection
+            if start > 0 {
+                find_spans.push(Span::styled(&find_text[..start], find_style));
+            }
+            // Selected text
+            if start < end && end <= find_text.len() {
+                find_spans.push(Span::styled(&find_text[start..end], Style::default().bg(selection_bg).fg(selection_fg)));
+            }
+            // Text after selection
+            if end < find_text.len() {
+                find_spans.push(Span::styled(&find_text[end..], find_style));
+            }
+        } else {
+            // No selection, just render the text
+            find_spans.push(Span::styled(find_text, find_style));
+        }
+        
+        let find_paragraph = Paragraph::new(Line::from(find_spans))
             .alignment(Alignment::Left);
         
         f.render_widget(find_paragraph, sections[0]);
         
         // Draw replace field
         let replace_label = "Replace: ";
-        let replace_content = format!("{}{}", replace_label, editor.replace_text);
+        let replace_text = &editor.replace_text;
         let replace_style = if editor.find_replace_focus == FindReplaceFocus::ReplaceField {
             Style::default().bg(selection_bg).fg(selection_fg)
         } else {
             Style::default().fg(fg_color)
         };
         
-        let replace_paragraph = Paragraph::new(replace_content)
-            .style(replace_style)
+        // Create spans for replace field with selection
+        let mut replace_spans = vec![Span::styled(replace_label, replace_style)];
+        
+        if let Some(sel_start) = editor.replace_selection_start {
+            let sel_end = editor.replace_cursor_pos;
+            let (start, end) = if sel_start <= sel_end { (sel_start, sel_end) } else { (sel_end, sel_start) };
+            
+            // Text before selection
+            if start > 0 {
+                replace_spans.push(Span::styled(&replace_text[..start], replace_style));
+            }
+            // Selected text
+            if start < end && end <= replace_text.len() {
+                replace_spans.push(Span::styled(&replace_text[start..end], Style::default().bg(selection_bg).fg(selection_fg)));
+            }
+            // Text after selection
+            if end < replace_text.len() {
+                replace_spans.push(Span::styled(&replace_text[end..], replace_style));
+            }
+        } else {
+            // No selection, just render the text
+            replace_spans.push(Span::styled(replace_text, replace_style));
+        }
+        
+        let replace_paragraph = Paragraph::new(Line::from(replace_spans))
             .alignment(Alignment::Left);
         
         f.render_widget(replace_paragraph, sections[1]);
@@ -1114,6 +1159,7 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             Line::from(""),
             Line::from("📝 EDITOR COMMANDS"),
             Line::from("  Ctrl+S         Save file"),
+            Line::from("  Ctrl+Alt+S     Save as (with new filename)"),
             Line::from("  Ctrl+O         Open file (TODO)"),
             Line::from("  Ctrl+Q         Quit editor"),
             Line::from("  Ctrl+Z         Undo"),
@@ -1125,6 +1171,9 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
             Line::from("  Ctrl+H         Replace current match"),
             Line::from("  Ctrl+Alt+H     Replace all matches"),
             Line::from("  Tab            Toggle between find/replace/editor"),
+            Line::from("  Ctrl+A         Select all text in current field"),
+            Line::from("  Ctrl+C         Copy selected text"),
+            Line::from("  Ctrl+V         Paste text"),
             Line::from("  Esc            Close find/replace"),
             Line::from(""),
             Line::from("🔤 CURSOR MOVEMENT"),
@@ -1762,7 +1811,7 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         f: &mut ratatui::Frame,
         area: Rect,
         buffer: &Buffer,
-        editor: &Editor,
+         _editor: &Editor,
         config: &Config,
         wrapped_lines: &[WrappedLine],
     ) {
@@ -1849,16 +1898,16 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(" Save As ")  // Use "Save As" instead of "Filename"
+            .title(" Save As ")
             .border_style(Style::default().fg(border_color))
             .style(Style::default().bg(modal_bg));
 
         let inner_area = block.inner(modal_area);
 
+        // Use consistent formatting without extra spaces
         let prompt_text = vec![
             Line::from(""),
-            Line::from(format!("
-            Filename: {}", editor.filename_prompt_text)),
+            Line::from(format!("Filename: {}", editor.filename_prompt_text)),
         ];
 
         let paragraph = Paragraph::new(prompt_text)
@@ -1868,10 +1917,10 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
         f.render_widget(block, modal_area);
         f.render_widget(paragraph, inner_area);
 
-        // Position cursor after "Filename: "
+        // Position cursor after "Filename: " (10 characters)
         if inner_area.height >= 2 {
             f.set_cursor_position((
-                inner_area.x + 13 + editor.filename_prompt_text.len() as u16,  // 13 is length of "            Filename: "
+                inner_area.x + 10 + editor.filename_cursor_pos as u16,
                 inner_area.y + 1
             ));
         }
