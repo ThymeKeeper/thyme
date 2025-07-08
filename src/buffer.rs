@@ -119,7 +119,7 @@ impl Buffer {
         let line_ending = LineEnding::detect(&content);
         
         // Normalize to LF for internal use
-        let normalized_content = content.replace("\r\n", "\n");
+        let normalized_content = content.replace("\r\n", "\n").replace("\t", "    ");
         let rope = Rope::from_str(&normalized_content);
         
         let language = detect_language_from_path(&path);
@@ -963,7 +963,7 @@ impl Buffer {
         let mut clipboard = Clipboard::new()?;
         if let Ok(text) = clipboard.get_text() {
             // Normalize line endings to LF
-            let normalized_text = text.replace("\r\n", "\n");
+            let normalized_text = text.replace("\r\n", "\n").replace("\t", "    ");
             
             // For very large pastes, we'll use optimized insertion
             let is_large_paste = normalized_text.len() > 10000 || normalized_text.matches('\n').count() > 100;
