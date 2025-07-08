@@ -1,7 +1,7 @@
 // src/events.rs
 
 use anyhow::Result;
-use crossterm::event::{poll, read, Event as CrosstermEvent, KeyEvent, MouseEvent};
+use crossterm::event::{poll, read, Event as CrosstermEvent, KeyEvent, KeyEventKind, MouseEvent};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -29,8 +29,21 @@ impl EventHandler {
                     if let Ok(event) = read() {
                         match event {
                             CrosstermEvent::Key(key) => {
-                                if event_sender.send(Event::Key(key)).is_err() {
-                                    break;
+                                // On Windows, only handle Press events to avoid duplicates
+                                #[cfg(windows)]
+                                {
+                                    if key.kind == KeyEventKind::Press {
+                                        if event_sender.send(Event::Key(key)).is_err() {
+                                            break;
+                                        }
+                                    }
+                                }
+                                // On other platforms, handle all key events (for compatibility)
+                                #[cfg(not(windows))]
+                                {
+                                    if event_sender.send(Event::Key(key)).is_err() {
+                                        break;
+                                    }
                                 }
                             }
                             CrosstermEvent::Mouse(mouse) => {

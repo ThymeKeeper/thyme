@@ -11,6 +11,30 @@ use arboard::Clipboard;
 use ropey::Rope;
 use std::{path::PathBuf, time::{Duration, Instant}};
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum LineEnding {
+    LF,   // Unix: \n
+    CRLF, // Windows: \r\n
+}
+
+impl LineEnding {
+    fn as_str(&self) -> &'static str {
+        match self {
+            LineEnding::LF => "\n",
+            LineEnding::CRLF => "\r\n",
+        }
+    }
+    
+    fn detect(text: &str) -> Self {
+        // If we find any \r\n, it's CRLF
+        if text.contains("\r\n") {
+            LineEnding::CRLF
+        } else {
+            LineEnding::LF
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum UndoAction {
     InsertText {
@@ -48,6 +72,7 @@ pub struct Buffer {
     pub last_change: Option<Instant>,
     pub syntax_highlighter: SyntaxHighlighter,
     pub needs_syntax_update: bool,
+    pub line_ending: LineEnding,
     undo_stack: Vec<UndoState>,
     redo_stack: Vec<UndoState>,
     max_undo_stack_size: usize,
@@ -61,6 +86,13 @@ impl Buffer {
         let mut syntax_highlighter = SyntaxHighlighter::new();
         syntax_highlighter.set_language("text");
         
+        // Default to platform-specific line ending
+        let line_ending = if cfg!(windows) {
+            LineEnding::CRLF
+        } else {
+            LineEnding::LF
+        };
+        
         Self {
             rope: Rope::new(),
             cursor: Cursor::new(),
@@ -70,6 +102,7 @@ impl Buffer {
             last_change: None,
             syntax_highlighter,
             needs_syntax_update: true,
+            line_ending,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             max_undo_stack_size: 1000,
@@ -81,7 +114,14 @@ impl Buffer {
 
     pub fn from_file(path: PathBuf) -> Result<Self> {
         let content = std::fs::read_to_string(&path)?;
-        let rope = Rope::from_str(&content);
+        
+        // Detect line ending style
+        let line_ending = LineEnding::detect(&content);
+        
+        // Normalize to LF for internal use
+        let normalized_content = content.replace("\r\n", "\n");
+        let rope = Rope::from_str(&normalized_content);
+        
         let language = detect_language_from_path(&path);
         
         let mut syntax_highlighter = SyntaxHighlighter::new();
@@ -96,6 +136,7 @@ impl Buffer {
             last_change: None,
             syntax_highlighter,
             needs_syntax_update: true,
+            line_ending,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             max_undo_stack_size: 1000,
@@ -757,7 +798,15 @@ impl Buffer {
         let save_path = path.or_else(|| self.file_path.clone())
             .ok_or_else(|| anyhow::anyhow!("No file path specified"))?;
         
-        std::fs::write(&save_path, self.rope.to_string())?;
+        // Convert back to original line ending style
+        let content = self.rope.to_string();
+        let final_content = if self.line_ending == LineEnding::CRLF {
+            content.replace("\n", "\r\n")
+        } else {
+            content
+        };
+        
+        std::fs::write(&save_path, final_content)?;
         self.file_path = Some(save_path);
         self.dirty = false;
         Ok(())
@@ -848,7 +897,14 @@ impl Buffer {
             let selected_text = self.get_text_range(start, end);
             if !selected_text.is_empty() {
                 let mut clipboard = Clipboard::new()?;
-                clipboard.set_text(selected_text)?;
+                
+                // On Windows, convert to CRLF for clipboard
+                #[cfg(windows)]
+                let clipboard_text = selected_text.replace("\n", "\r\n");
+                #[cfg(not(windows))]
+                let clipboard_text = selected_text;
+                
+                clipboard.set_text(clipboard_text)?;
             }
         }
         // If no selection, do nothing (standard behavior)
@@ -861,7 +917,14 @@ impl Buffer {
             let selected_text = self.get_text_range(start, end);
             if !selected_text.is_empty() {
                 let mut clipboard = Clipboard::new()?;
-                clipboard.set_text(selected_text.clone())?;
+                
+                // On Windows, convert to CRLF for clipboard
+                #[cfg(windows)]
+                let clipboard_text = selected_text.replace("\n", "\r\n");
+                #[cfg(not(windows))]
+                let clipboard_text = selected_text.clone();
+                
+                clipboard.set_text(clipboard_text)?;
                 
                 // Push cut to undo stack as delete
                 // If we're in an undo group, use add_undo_state to keep it in the group
@@ -899,8 +962,11 @@ impl Buffer {
     pub fn paste_from_clipboard(&mut self) -> Result<()> {
         let mut clipboard = Clipboard::new()?;
         if let Ok(text) = clipboard.get_text() {
+            // Normalize line endings to LF
+            let normalized_text = text.replace("\r\n", "\n");
+            
             // For very large pastes, we'll use optimized insertion
-            let is_large_paste = text.len() > 10000 || text.matches('\n').count() > 100;
+            let is_large_paste = normalized_text.len() > 10000 || normalized_text.matches('\n').count() > 100;
             
             // Handle selection - delete selected text first
             if let Some((start, end)) = self.cursor.get_selection_range() {
@@ -913,10 +979,10 @@ impl Buffer {
             // Insert the text at cursor position
             if is_large_paste {
                 // Use optimized insertion for large pastes
-                self.insert_text_at_cursor_optimized(&text);
+                self.insert_text_at_cursor_optimized(&normalized_text);
             } else {
                 // Regular insertion with immediate syntax highlighting
-                self.insert_text_at_cursor(&text);
+                self.insert_text_at_cursor(&normalized_text);
             }
 
             // Determine cursor position after paste
@@ -925,7 +991,7 @@ impl Buffer {
             // Push paste to undo stack as insert
             self.add_undo_state(UndoAction::InsertText {
                 position: start_position,
-                text: text.clone(),
+                text: normalized_text.clone(),
                 cursor_after,
             });
 

@@ -24,3 +24,6 @@ arboard = "3.4"
 
 [dev-dependencies]
 # Add any test dependencies here if needed
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["wincon", "winuser", "consoleapi"] }
