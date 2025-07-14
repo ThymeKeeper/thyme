@@ -1,5 +1,7 @@
 // src/buffer.rs
 
+use encoding_rs::{UTF_16LE, UTF_16BE, UTF_8};
+use std::fs;
 use crate::{
     config::Config, 
     cursor::{Cursor, Position}, 
@@ -113,7 +115,11 @@ impl Buffer {
     }
 
     pub fn from_file(path: PathBuf) -> Result<Self> {
-        let content = std::fs::read_to_string(&path)?;
+        // Read file as bytes first to detect encoding
+        let bytes = fs::read(&path)?;
+        
+        // Detect and convert encoding
+        let content = Self::detect_and_convert_encoding(&bytes)?;
         
         // Detect line ending style
         let line_ending = LineEnding::detect(&content);
@@ -150,6 +156,86 @@ impl Buffer {
         buffer.needs_syntax_update = false;
         
         Ok(buffer)
+    }
+    
+    // Helper function to detect and convert encoding
+    fn detect_and_convert_encoding(bytes: &[u8]) -> Result<String> {
+        // Check for BOM (Byte Order Mark)
+        if bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
+            // UTF-8 with BOM
+            let (content, _, had_errors) = UTF_8.decode(&bytes[3..]);
+            if had_errors {
+                return Err(anyhow::anyhow!("Invalid UTF-8 encoding"));
+            }
+            return Ok(content.into_owned());
+        } else if bytes.len() >= 2 {
+            if bytes[0] == 0xFF && bytes[1] == 0xFE {
+                // UTF-16 LE with BOM
+                let (content, _, had_errors) = UTF_16LE.decode(&bytes[2..]);
+                if had_errors {
+                    return Err(anyhow::anyhow!("Invalid UTF-16 LE encoding"));
+                }
+                return Ok(content.into_owned());
+            } else if bytes[0] == 0xFE && bytes[1] == 0xFF {
+                // UTF-16 BE with BOM
+                let (content, _, had_errors) = UTF_16BE.decode(&bytes[2..]);
+                if had_errors {
+                    return Err(anyhow::anyhow!("Invalid UTF-16 BE encoding"));
+                }
+                return Ok(content.into_owned());
+            }
+        }
+        
+        // No BOM detected, try to detect encoding heuristically
+        // Check if it might be UTF-16 without BOM by looking for null bytes
+        if bytes.len() >= 2 && Self::has_alternating_nulls(bytes) {
+            // Try UTF-16 LE first (more common on Windows)
+            let (content, _, had_errors) = UTF_16LE.decode(bytes);
+            if !had_errors {
+                return Ok(content.into_owned());
+            }
+            
+            // Try UTF-16 BE
+            let (content, _, had_errors) = UTF_16BE.decode(bytes);
+            if !had_errors {
+                return Ok(content.into_owned());
+            }
+        }
+        
+        // Default to UTF-8
+        let (content, _, had_errors) = UTF_8.decode(bytes);
+        if had_errors {
+            return Err(anyhow::anyhow!("Unable to decode file - unknown encoding"));
+        }
+        Ok(content.into_owned())
+    }
+    
+    // Helper function to detect if bytes might be UTF-16 by checking for alternating nulls
+    fn has_alternating_nulls(bytes: &[u8]) -> bool {
+        if bytes.len() < 20 {
+            return false;
+        }
+        
+        let mut null_count = 0;
+        let mut even_nulls = 0;
+        let mut odd_nulls = 0;
+        
+        // Check first 100 bytes or entire file if smaller
+        let check_len = bytes.len().min(100);
+        
+        for i in 0..check_len {
+            if bytes[i] == 0 {
+                null_count += 1;
+                if i % 2 == 0 {
+                    even_nulls += 1;
+                } else {
+                    odd_nulls += 1;
+                }
+            }
+        }
+        
+        // If we have a significant number of nulls in alternating positions, it's likely UTF-16
+        null_count > check_len / 4 && (even_nulls > odd_nulls * 2 || odd_nulls > even_nulls * 2)
     }
 
     // Method to change the syntax highlighting language
