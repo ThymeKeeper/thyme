@@ -1050,9 +1050,42 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
             if let Some(buffer) = self.current_buffer_mut() {
                 let prev_segment = &wrapped_segments[segment_idx - 1];
                 let target_visual_col = preferred_visual_column;
-                let prev_segment_len = prev_segment.0.chars().count();
-                let new_col = prev_segment.1 + target_visual_col.min(prev_segment_len);
-                buffer.cursor.column = new_col;
+                
+                // For continuation lines, account for virtual indentation
+                if segment_idx - 1 > 0 { // Previous segment is a continuation line
+                    let segment_chars: Vec<char> = prev_segment.0.chars().collect();
+                    let mut indent_width = 0;
+                    let mut indent_char_count = 0;
+                    
+                    // Count the virtual indentation
+                    for &ch in &segment_chars {
+                        if ch == ' ' || ch == '\t' {
+                            indent_width += crate::unicode_utils::char_display_width(ch);
+                            indent_char_count += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    // Calculate position in the actual text
+                    let new_col = if target_visual_col <= indent_width {
+                        // Cursor would be in the virtual indent - put it at start of actual content
+                        prev_segment.1
+                    } else {
+                        // Cursor is past the indent - calculate position in actual content
+                        let visual_pos_in_content = target_visual_col - indent_width;
+                        let content_part: String = segment_chars[indent_char_count..].iter().collect();
+                        let char_pos_in_content = crate::unicode_utils::visual_column_to_char_pos(&content_part, visual_pos_in_content);
+                        prev_segment.1 + char_pos_in_content.min(content_part.chars().count())
+                    };
+                    
+                    buffer.cursor.column = new_col;
+                } else {
+                    // First segment - no virtual indentation
+                    let prev_segment_len = prev_segment.0.chars().count();
+                    let new_col = prev_segment.1 + target_visual_col.min(prev_segment_len);
+                    buffer.cursor.column = new_col;
+                }
                 buffer.cursor.preferred_visual_column = target_visual_col;
             }
         } else {
@@ -1073,9 +1106,43 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
                     if !new_wrapped.is_empty() {
                         // Always go to the LAST visual line of the previous logical line
                         let last_segment = &new_wrapped[new_wrapped.len() - 1];
-                        let segment_len = last_segment.0.chars().count();
-                        let new_col = last_segment.1 + target_visual_col.min(segment_len);
-                        buffer.cursor.column = new_col;
+                        let last_segment_idx = new_wrapped.len() - 1;
+                        
+                        // Check if this is a continuation line (not the first segment)
+                        if last_segment_idx > 0 {
+                            let segment_chars: Vec<char> = last_segment.0.chars().collect();
+                            let mut indent_width = 0;
+                            let mut indent_char_count = 0;
+                            
+                            // Count the virtual indentation
+                            for &ch in &segment_chars {
+                                if ch == ' ' || ch == '\t' {
+                                    indent_width += crate::unicode_utils::char_display_width(ch);
+                                    indent_char_count += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                            
+                            // Calculate position in the actual text
+                            let new_col = if target_visual_col <= indent_width {
+                                // Cursor would be in the virtual indent - put it at start of actual content
+                                last_segment.1
+                            } else {
+                                // Cursor is past the indent - calculate position in actual content
+                                let visual_pos_in_content = target_visual_col - indent_width;
+                                let content_part: String = segment_chars[indent_char_count..].iter().collect();
+                                let char_pos_in_content = crate::unicode_utils::visual_column_to_char_pos(&content_part, visual_pos_in_content);
+                                last_segment.1 + char_pos_in_content.min(content_part.chars().count())
+                            };
+                            
+                            buffer.cursor.column = new_col;
+                        } else {
+                            // First segment - no virtual indentation
+                            let segment_len = last_segment.0.chars().count();
+                            let new_col = last_segment.1 + target_visual_col.min(segment_len);
+                            buffer.cursor.column = new_col;
+                        }
                         buffer.cursor.preferred_visual_column = target_visual_col;
                     } else {
                         buffer.cursor.column = target_visual_col.min(new_line_for_display.chars().count());
@@ -1128,13 +1195,46 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
 	        if segment_idx < wrapped_segments.len() - 1 {
 	            // Move to next visual line within same logical line
 	            if let Some(buffer) = self.current_buffer_mut() {
-	                let next_segment = &wrapped_segments[segment_idx + 1];
-	                let target_visual_col = preferred_visual_column;
-	                let next_segment_len = next_segment.0.chars().count();
-	                let new_col = next_segment.1 + target_visual_col.min(next_segment_len);
-	                buffer.cursor.column = new_col;
-	                buffer.cursor.preferred_visual_column = target_visual_col;
-	            }
+                let next_segment = &wrapped_segments[segment_idx + 1];
+                let target_visual_col = preferred_visual_column;
+                
+                // For continuation lines, account for virtual indentation
+                if segment_idx + 1 > 0 { // Next segment is a continuation line (always true unless first segment)
+                    let segment_chars: Vec<char> = next_segment.0.chars().collect();
+                    let mut indent_width = 0;
+                    let mut indent_char_count = 0;
+                    
+                    // Count the virtual indentation
+                    for &ch in &segment_chars {
+                        if ch == ' ' || ch == '\t' {
+                            indent_width += crate::unicode_utils::char_display_width(ch);
+                            indent_char_count += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    // Calculate position in the actual text
+                    let new_col = if target_visual_col <= indent_width {
+                        // Cursor would be in the virtual indent - put it at start of actual content
+                        next_segment.1
+                    } else {
+                        // Cursor is past the indent - calculate position in actual content
+                        let visual_pos_in_content = target_visual_col - indent_width;
+                        let content_part: String = segment_chars[indent_char_count..].iter().collect();
+                        let char_pos_in_content = crate::unicode_utils::visual_column_to_char_pos(&content_part, visual_pos_in_content);
+                        next_segment.1 + char_pos_in_content.min(content_part.chars().count())
+                    };
+                    
+                    buffer.cursor.column = new_col;
+                } else {
+                    // This case shouldn't happen but handle it anyway
+                    let next_segment_len = next_segment.0.chars().count();
+                    let new_col = next_segment.1 + target_visual_col.min(next_segment_len);
+                    buffer.cursor.column = new_col;
+                }
+                buffer.cursor.preferred_visual_column = target_visual_col;
+            }
 	        } else {
 	            // We're on the last visual segment of the current line
 	            if cursor_line < total_lines - 1 {
@@ -1151,16 +1251,17 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
 	                    let new_wrapped = wrap_line(new_line_for_display, content_width);
 	                    
 	                    if !new_wrapped.is_empty() {
-	                        // Always go to the FIRST visual line of the next logical line
-	                        let first_segment = &new_wrapped[0];
-	                        let segment_len = first_segment.0.chars().count();
-	                        let new_col = first_segment.1 + target_visual_col.min(segment_len);
-	                        buffer.cursor.column = new_col;
-	                        buffer.cursor.preferred_visual_column = target_visual_col;
-	                    } else {
-	                        buffer.cursor.column = target_visual_col.min(new_line_for_display.chars().count());
-	                        buffer.cursor.preferred_visual_column = target_visual_col;
-	                    }
+                        // Always go to the FIRST visual line of the next logical line
+                        let first_segment = &new_wrapped[0];
+                        // First segment should not have virtual indentation, so just use simple positioning
+                        let segment_len = first_segment.0.chars().count();
+                        let new_col = first_segment.1 + target_visual_col.min(segment_len);
+                        buffer.cursor.column = new_col;
+                        buffer.cursor.preferred_visual_column = target_visual_col;
+                    } else {
+                        buffer.cursor.column = target_visual_col.min(new_line_for_display.chars().count());
+                        buffer.cursor.preferred_visual_column = target_visual_col;
+                    }
 	                }
 	            }
 	        }
@@ -2179,7 +2280,10 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
                                 let content_part: String = segment_chars[indent_char_count..].iter().collect();
                                 let adjusted_visual_x = relative_x - indent_visual_width;
                                 let char_pos_in_content = crate::unicode_utils::visual_column_to_char_pos(&content_part, adjusted_visual_x);
-                                start_col + char_pos_in_content
+                                // Make sure we don't exceed the actual content length
+                                let max_pos_in_content = content_part.chars().count();
+                                let safe_pos = char_pos_in_content.min(max_pos_in_content);
+                                start_col + safe_pos
                             }
                         };
                         

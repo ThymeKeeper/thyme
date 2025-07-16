@@ -4,6 +4,62 @@
 
 use crate::unicode_utils::{char_display_width, str_display_width};
 
+/// Detects if a line starts with a bullet point pattern after indentation
+/// Returns the width of the bullet marker (including trailing space) if found
+fn detect_bullet_width(text: &str, after_indent: usize) -> Option<usize> {
+    let chars: Vec<char> = text.chars().skip(after_indent).collect();
+    
+    // Need at least 2 characters for a bullet pattern (bullet + space)
+    if chars.len() < 2 {
+        return None;
+    }
+    
+    // Check for single-character bullets followed by space
+    match chars[0] {
+        '-' | '*' | '+' | '•' | '‣' | '⁃' | '◦' => {
+            if chars[1] == ' ' {
+                return Some(2); // bullet + space
+            }
+        }
+        // Checkbox patterns
+        '□' | '▢' | '☐' | '■' | '▪' | '☑' | '☒' | '◪' => {
+            if chars[1] == ' ' {
+                return Some(char_display_width(chars[0]) + 1);
+            }
+        }
+        _ => {}
+    }
+    
+    // Check for numbered lists (1. 2. ... 99. etc)
+    if chars[0].is_ascii_digit() {
+        let mut num_digits = 1;
+        while num_digits < chars.len() && 
+              num_digits <= 2 && // Support up to 99.
+              chars[num_digits].is_ascii_digit() {
+            num_digits += 1;
+        }
+        
+        // Must have at least ". " or ") " after the number
+        if num_digits + 1 < chars.len() {
+            if (chars[num_digits] == '.' || chars[num_digits] == ')') && 
+               chars[num_digits + 1] == ' ' {
+                // For numbered lists, use a fixed indent of 4 spaces
+                // This ensures "1. " and "99. " align their continuation lines
+                return Some(4);
+            }
+        }
+    }
+    
+    // Check for single lowercase letter lists (a. b. ... z.)
+    if chars[0].is_ascii_lowercase() && chars.len() >= 3 {
+        if (chars[1] == '.' || chars[1] == ')') && chars[2] == ' ' {
+            return Some(4); // Use fixed 4-space indent for letter lists too
+        }
+    }
+    
+    None
+}
+
 /// Wraps a line of text to fit within a specified width, preserving word boundaries when possible.
 /// Returns a vector of (segment, start_position) tuples where start_position is the character
 /// position in the original text (not including any added indentation).
@@ -31,8 +87,26 @@ pub fn wrap_line(text: &str, width: usize) -> Vec<(String, usize)> {
         }
     }
     
-    // Create the indent string for continuation lines
-    let indent_string: String = chars[..indent_len].iter().collect();
+    // Create the base indent string for continuation lines
+    let base_indent_string: String = chars[..indent_len].iter().collect();
+    
+    // Check if there's a bullet point after the indentation
+    let bullet_width = detect_bullet_width(text, indent_len);
+    
+    // Create the actual indent string for continuation lines
+    let indent_string = if let Some(bw) = bullet_width {
+        // Add extra spaces to align with text after bullet
+        format!("{}{}", base_indent_string, " ".repeat(bw))
+    } else {
+        base_indent_string.clone()
+    };
+    
+    // Calculate the total indent width for continuation lines
+    let total_indent_width = if let Some(bw) = bullet_width {
+        indent_width + bw
+    } else {
+        indent_width
+    };
     
     let mut start_pos = 0;
     let mut is_first_line = true;
@@ -42,8 +116,8 @@ pub fn wrap_line(text: &str, width: usize) -> Vec<(String, usize)> {
         let effective_width = if is_first_line {
             width
         } else {
-            // For continuation lines, reduce width by indent amount
-            width.saturating_sub(indent_width)
+            // For continuation lines, reduce width by the total indent amount
+            width.saturating_sub(total_indent_width)
         };
         
         if effective_width == 0 {
@@ -94,7 +168,7 @@ pub fn wrap_line(text: &str, width: usize) -> Vec<(String, usize)> {
             // First line - use as is
             chars[start_pos..end_pos].iter().collect()
         } else {
-            // Continuation line - prepend the indentation
+            // Continuation line - prepend the appropriate indentation
             let line_content: String = chars[start_pos..end_pos].iter().collect();
             format!("{}{}", indent_string, line_content)
         };
