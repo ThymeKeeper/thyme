@@ -1025,6 +1025,8 @@ dependencies = [
  "serde",
  "tokio",
  "toml",
+ "unicode-segmentation",
+ "unicode-width",
  "winapi",
 ]
 

@@ -6,7 +6,8 @@ use crate::{
     config::Config, 
     cursor::{Cursor, Position}, 
     syntax::SyntaxHighlighter,
-    text_utils::{detect_language_from_path, get_language_display_name, get_supported_languages}
+    text_utils::{detect_language_from_path, get_language_display_name, get_supported_languages},
+    unicode_utils::{char_display_width, str_display_width, char_pos_to_visual_column}
 };
 use anyhow::Result;
 use arboard::Clipboard;
@@ -114,30 +115,25 @@ impl Buffer {
         }
     }
 
-    pub fn from_file(path: PathBuf) -> Result<Self> {
-        // Read file as bytes first to detect encoding
-        let bytes = fs::read(&path)?;
-        
-        // Detect and convert encoding
-        let content = Self::detect_and_convert_encoding(&bytes)?;
-        
-        // Detect line ending style
-        let line_ending = LineEnding::detect(&content);
-        
-        // Normalize to LF for internal use
-        let normalized_content = content.replace("\r\n", "\n").replace("\t", "    ");
-        let rope = Rope::from_str(&normalized_content);
-        
+    /// Create a new empty buffer with a file path set (for files that don't exist yet)
+    pub fn new_with_file_path(path: PathBuf) -> Result<Self> {
         let language = detect_language_from_path(&path);
         
         let mut syntax_highlighter = SyntaxHighlighter::new();
         syntax_highlighter.set_language(&language);
         
-        let mut buffer = Self {
-            rope,
+        // Default to platform-specific line ending
+        let line_ending = if cfg!(windows) {
+            LineEnding::CRLF
+        } else {
+            LineEnding::LF
+        };
+        
+        let buffer = Self {
+            rope: Rope::new(),
             cursor: Cursor::new(),
             file_path: Some(path),
-            dirty: false,
+            dirty: false,  // Not dirty since it hasn't been modified yet
             language: language.clone(),
             last_change: None,
             syntax_highlighter,
@@ -150,12 +146,58 @@ impl Buffer {
             undo_grouping_active: false,
             current_undo_group_id: 0,
         };
-
-        // Force initial syntax highlighting
-        buffer.syntax_highlighter.update(&buffer.rope);
-        buffer.needs_syntax_update = false;
         
         Ok(buffer)
+    }
+
+    pub fn from_file(path: PathBuf) -> Result<Self> {
+        // Check if file exists
+        if path.exists() {
+            // File exists, read it normally
+            let bytes = fs::read(&path)?;
+            
+            // Detect and convert encoding
+            let content = Self::detect_and_convert_encoding(&bytes)?;
+            
+            // Detect line ending style
+            let line_ending = LineEnding::detect(&content);
+            
+            // Normalize to LF for internal use
+            let normalized_content = content.replace("\r\n", "\n").replace("\t", "    ");
+            let rope = Rope::from_str(&normalized_content);
+            
+            let language = detect_language_from_path(&path);
+            
+            let mut syntax_highlighter = SyntaxHighlighter::new();
+            syntax_highlighter.set_language(&language);
+            
+            let mut buffer = Self {
+                rope,
+                cursor: Cursor::new(),
+                file_path: Some(path),
+                dirty: false,
+                language: language.clone(),
+                last_change: None,
+                syntax_highlighter,
+                needs_syntax_update: true,
+                line_ending,
+                undo_stack: Vec::new(),
+                redo_stack: Vec::new(),
+                max_undo_stack_size: 1000,
+                last_action_time: None,
+                undo_grouping_active: false,
+                current_undo_group_id: 0,
+            };
+
+            // Force initial syntax highlighting
+            buffer.syntax_highlighter.update(&buffer.rope);
+            buffer.needs_syntax_update = false;
+            
+            Ok(buffer)
+        } else {
+            // File doesn't exist, create empty buffer with the path
+            Self::new_with_file_path(path)
+        }
     }
     
     // Helper function to detect and convert encoding
@@ -326,6 +368,16 @@ impl Buffer {
         
         self.rope.insert_char(char_idx, c);
         self.cursor.column += 1;
+        
+        // Update preferred visual column based on the new position
+        let line_text = self.get_line_text(self.cursor.line);
+        let line_for_display = if line_text.ends_with('\n') {
+            &line_text[..line_text.len()-1]
+        } else {
+            &line_text
+        };
+        self.cursor.preferred_visual_column = char_pos_to_visual_column(line_for_display, self.cursor.column);
+        
         self.mark_dirty();
         
         // Update syntax highlighting for the current line only
@@ -801,6 +853,15 @@ impl Buffer {
     pub fn move_cursor_left(&mut self) {
         if self.cursor.column > 0 {
             self.cursor.column -= 1;
+            
+            // Update preferred visual column
+            let line_text = self.get_line_text(self.cursor.line);
+            let line_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            self.cursor.preferred_visual_column = char_pos_to_visual_column(line_for_display, self.cursor.column);
         } else if self.cursor.line > 0 {
             self.cursor.line -= 1;
             let line_text = self.get_line_text(self.cursor.line);
@@ -809,6 +870,14 @@ impl Buffer {
             } else {
                 line_text.chars().count()
             };
+            
+            // Update preferred visual column
+            let line_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            self.cursor.preferred_visual_column = char_pos_to_visual_column(line_for_display, self.cursor.column);
         }
     }
 
@@ -822,9 +891,18 @@ impl Buffer {
         
         if self.cursor.column < line_content_len {
             self.cursor.column += 1;
+            
+            // Update preferred visual column
+            let line_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            self.cursor.preferred_visual_column = char_pos_to_visual_column(line_for_display, self.cursor.column);
         } else if self.cursor.line < self.rope.len_lines() - 1 {
             self.cursor.line += 1;
             self.cursor.column = 0;
+            self.cursor.preferred_visual_column = 0;
         }
     }
 
@@ -832,12 +910,15 @@ impl Buffer {
         if self.cursor.line > 0 {
             self.cursor.line -= 1;
             let line_text = self.get_line_text(self.cursor.line);
-            let line_content_len = if line_text.ends_with('\n') {
-                line_text.chars().count().saturating_sub(1)
+            let line_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
             } else {
-                line_text.chars().count()
+                &line_text
             };
-            self.cursor.column = self.cursor.preferred_visual_column.min(line_content_len);
+            
+            // Convert preferred visual column to character position
+            use crate::unicode_utils::visual_column_to_char_pos;
+            self.cursor.column = visual_column_to_char_pos(line_for_display, self.cursor.preferred_visual_column);
         }
     }
 
@@ -845,12 +926,15 @@ impl Buffer {
         if self.cursor.line < self.rope.len_lines() - 1 {
             self.cursor.line += 1;
             let line_text = self.get_line_text(self.cursor.line);
-            let line_content_len = if line_text.ends_with('\n') {
-                line_text.chars().count().saturating_sub(1)
+            let line_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
             } else {
-                line_text.chars().count()
+                &line_text
             };
-            self.cursor.column = self.cursor.preferred_visual_column.min(line_content_len);
+            
+            // Convert preferred visual column to character position
+            use crate::unicode_utils::visual_column_to_char_pos;
+            self.cursor.column = visual_column_to_char_pos(line_for_display, self.cursor.preferred_visual_column);
         }
     }
 
@@ -866,7 +950,14 @@ impl Buffer {
         } else {
             line_text.chars().count()
         };
-        self.cursor.preferred_visual_column = self.cursor.column;
+        
+        // Update preferred visual column based on actual visual position
+        let line_for_display = if line_text.ends_with('\n') {
+            &line_text[..line_text.len()-1]
+        } else {
+            &line_text
+        };
+        self.cursor.preferred_visual_column = char_pos_to_visual_column(line_for_display, self.cursor.column);
     }
 
     fn mark_dirty(&mut self) {
@@ -883,6 +974,11 @@ impl Buffer {
     pub fn save(&mut self, path: Option<PathBuf>) -> Result<()> {
         let save_path = path.or_else(|| self.file_path.clone())
             .ok_or_else(|| anyhow::anyhow!("No file path specified"))?;
+        
+        // Create parent directory if it doesn't exist
+        if let Some(parent) = save_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         
         // Convert back to original line ending style
         let content = self.rope.to_string();
@@ -939,7 +1035,14 @@ impl Buffer {
     }
 
     pub fn reset_preferred_column(&mut self) {
-        self.cursor.preferred_visual_column = self.cursor.column;
+        // Calculate the actual visual column for the current character position
+        let line_text = self.get_line_text(self.cursor.line);
+        let line_for_display = if line_text.ends_with('\n') {
+            &line_text[..line_text.len()-1]
+        } else {
+            &line_text
+        };
+        self.cursor.preferred_visual_column = char_pos_to_visual_column(line_for_display, self.cursor.column);
     }
     
     // Force syntax highlighting update

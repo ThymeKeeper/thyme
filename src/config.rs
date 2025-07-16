@@ -35,10 +35,6 @@ pub struct KeyBindings {
     pub toggle_gutter: SerializableKeyEvent,
     pub language_selection: SerializableKeyEvent,
     pub theme_selection: SerializableKeyEvent,
-    // Bullet journal hotkeys
-    pub bullet_todo: SerializableKeyEvent,
-    pub bullet_in_progress: SerializableKeyEvent,
-    pub bullet_done: SerializableKeyEvent,
     // Paragraph navigation
     pub paragraph_up: SerializableKeyEvent,
     pub paragraph_down: SerializableKeyEvent,
@@ -322,19 +318,6 @@ impl Default for Config {
                 },
                 theme_selection: SerializableKeyEvent {
                     code: "t".to_string(),
-                    modifiers: vec!["ctrl".to_string()],
-                },
-                // Bullet journal hotkeys
-                bullet_todo: SerializableKeyEvent {
-                    code: "Left".to_string(),
-                    modifiers: vec!["ctrl".to_string()],
-                },
-                bullet_in_progress: SerializableKeyEvent {
-                    code: "Down".to_string(),
-                    modifiers: vec!["ctrl".to_string()],
-                },
-                bullet_done: SerializableKeyEvent {
-                    code: "Right".to_string(),
                     modifiers: vec!["ctrl".to_string()],
                 },
                 // Paragraph navigation

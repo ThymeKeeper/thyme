@@ -14,6 +14,10 @@ ropey = "1.6"
 ratatui = "0.28"
 crossterm = "0.28"
 
+# Unicode support
+unicode-width = "0.1"
+unicode-segmentation = "1.11"
+
 # Configuration
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"

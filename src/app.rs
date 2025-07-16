@@ -820,7 +820,12 @@ impl App {
             return Ok(true);
         }
 
-        // Bullet journal hotkeys
+        // Bullet journal hotkeys - REMOVED
+        // The following hotkeys have been commented out:
+        // - bullet_todo: inserted '□'
+        // - bullet_in_progress: inserted '◪' 
+        // - bullet_done: inserted '■'
+        /*
         if key == keybindings.bullet_todo {
             self.editor.insert_char('□', self.calculate_content_width(), &self.config, self.calculate_visible_lines());
             return Ok(true);
@@ -835,6 +840,7 @@ impl App {
             self.editor.insert_char('■', self.calculate_content_width(), &self.config, self.calculate_visible_lines());
             return Ok(true);
         }
+        */
 
         // Paragraph navigation
         if key == keybindings.paragraph_up {

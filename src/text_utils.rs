@@ -2,6 +2,8 @@
 //
 // Shared text manipulation utilities
 
+use crate::unicode_utils::{char_display_width, str_display_width};
+
 /// Wraps a line of text to fit within a specified width, preserving word boundaries when possible.
 /// Returns a vector of (segment, start_position) tuples where start_position is the character
 /// position in the original text (not including any added indentation).
@@ -19,9 +21,11 @@ pub fn wrap_line(text: &str, width: usize) -> Vec<(String, usize)> {
 
     // Calculate the indentation of the first line
     let mut indent_len = 0;
+    let mut indent_width = 0;
     for &ch in &chars {
         if ch == ' ' || ch == '\t' {
             indent_len += 1;
+            indent_width += if ch == '\t' { 4 } else { char_display_width(ch) };
         } else {
             break;
         }
@@ -29,7 +33,6 @@ pub fn wrap_line(text: &str, width: usize) -> Vec<(String, usize)> {
     
     // Create the indent string for continuation lines
     let indent_string: String = chars[..indent_len].iter().collect();
-    let indent_width = indent_len; // For spaces this is accurate, tabs would need special handling
     
     let mut start_pos = 0;
     let mut is_first_line = true;
@@ -58,22 +61,31 @@ pub fn wrap_line(text: &str, width: usize) -> Vec<(String, usize)> {
             continue;
         }
         
-        let mut end_pos = (start_pos + effective_width).min(chars.len());
+        // Find the position that fits within the effective width
+        let mut current_width = 0;
+        let mut end_pos = start_pos;
+        let mut last_space_pos = None;
         
-        // If we're not at the end of the text, try to break at a word boundary
-        if end_pos < chars.len() {
-            // Look backwards from end_pos to find a space
-            let mut break_pos = end_pos;
-            for i in (start_pos..end_pos).rev() {
-                if chars[i] == ' ' {
-                    break_pos = i;
-                    break;
-                }
+        while end_pos < chars.len() {
+            let ch_width = char_display_width(chars[end_pos]);
+            if current_width + ch_width > effective_width {
+                break;
             }
             
-            // If we found a space and it's not too close to the start, use it
-            if break_pos > start_pos && (break_pos - start_pos) > effective_width / 4 {
-                end_pos = break_pos;
+            if chars[end_pos] == ' ' {
+                last_space_pos = Some(end_pos);
+            }
+            
+            current_width += ch_width;
+            end_pos += 1;
+        }
+        
+        // If we're not at the end and found a space, break at the space
+        if end_pos < chars.len() && end_pos > start_pos {
+            if let Some(space_pos) = last_space_pos {
+                if space_pos > start_pos && (space_pos - start_pos) > effective_width / 4 {
+                    end_pos = space_pos;
+                }
             }
         }
         

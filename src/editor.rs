@@ -1681,10 +1681,19 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
     // Returns true if the viewport was adjusted
     fn adjust_horizontal_viewport(&mut self, config: &Config) -> bool {
         // Extract needed values from buffer first to avoid borrowing issues
-        let (cursor_column, _cursor_line, line_len) = if let Some(buffer) = self.current_buffer() {
+        let (cursor_column, cursor_visual_column, line_text) = if let Some(buffer) = self.current_buffer() {
             let line_text = buffer.get_line_text(buffer.cursor.line);
-            let line_len = line_text.chars().count();
-            (buffer.cursor.column, buffer.cursor.line, line_len)
+            let line_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            
+            // Calculate visual column position for cursor
+            use crate::unicode_utils::char_pos_to_visual_column;
+            let visual_column = char_pos_to_visual_column(line_for_display, buffer.cursor.column);
+            
+            (buffer.cursor.column, visual_column, line_text)
         } else {
             return false;
         };
@@ -1698,26 +1707,34 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
         // Use configurable horizontal scrolloff
         let h_scrolloff = config.horizontal_scrolloff as usize;
         
-        // Calculate the visible range with scrolloff zones
-        let left_boundary = self.horizontal_offset + h_scrolloff;
-        let right_boundary = self.horizontal_offset + content_width.saturating_sub(h_scrolloff + 1);
+        // Ensure scrolloff doesn't exceed half the content width
+        let effective_scrolloff = h_scrolloff.min(content_width.saturating_sub(1) / 2);
+        
+        // Calculate the visible range with scrolloff zones (in visual columns)
+        // The left boundary is where content starts to be visible after scrolloff
+        let left_boundary = self.horizontal_offset + effective_scrolloff;
+        // The right boundary is where we need to start scrolling to maintain scrolloff on the right
+        let right_boundary = self.horizontal_offset + content_width.saturating_sub(effective_scrolloff);
         
         // Adjust horizontal offset if cursor is outside the scrolloff zones
-        if cursor_column < left_boundary && cursor_column >= h_scrolloff {
-            // Cursor is too far left - scroll left to maintain scrolloff
-            self.horizontal_offset = cursor_column.saturating_sub(h_scrolloff);
-        } else if cursor_column < h_scrolloff {
-            // Cursor is very close to start - reset to beginning
+        if cursor_visual_column < self.horizontal_offset {
+            // Cursor is completely off screen to the left - bring it into view with scrolloff
+            self.horizontal_offset = cursor_visual_column.saturating_sub(effective_scrolloff);
+        } else if cursor_visual_column < left_boundary && self.horizontal_offset > 0 {
+            // Cursor is in the left scrolloff zone - scroll left
+            self.horizontal_offset = cursor_visual_column.saturating_sub(effective_scrolloff);
+        } else if cursor_visual_column >= self.horizontal_offset + content_width {
+            // Cursor is completely off screen to the right - bring it into view with scrolloff
+            self.horizontal_offset = cursor_visual_column + effective_scrolloff + 1 - content_width;
+        } else if cursor_visual_column >= right_boundary {
+            // Cursor is in the right scrolloff zone - scroll right
+            // We need to ensure there's effective_scrolloff space to the right of the cursor
+            self.horizontal_offset = cursor_visual_column + effective_scrolloff + 1 - content_width;
+        }
+        
+        // Ensure horizontal offset is never negative
+        if self.horizontal_offset > cursor_visual_column && cursor_visual_column < effective_scrolloff {
             self.horizontal_offset = 0;
-        } else if cursor_column >= right_boundary {
-            // Cursor is at or past the right boundary - scroll right to maintain scrolloff
-            // We need to ensure there's h_scrolloff space to the right of the cursor
-            self.horizontal_offset = cursor_column.saturating_sub(content_width.saturating_sub(h_scrolloff + 1));
-            
-            // Note: We intentionally don't limit by line length here because:
-            // 1. The scrolloff zone should work regardless of current line length
-            // 2. Other lines in the buffer might be longer
-            // 3. We want consistent scrolling behavior while typing
         }
         
         // Return true if the offset changed
@@ -2025,9 +2042,20 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
                     (self.viewport_line as usize) + relative_y
                 };
                 
-                // Ensure line is within buffer bounds
+                // If line is beyond buffer bounds, return EOF position
                 if line >= buffer.rope.len_lines() {
-                    return None;
+                    if buffer.rope.len_lines() > 0 {
+                        let last_line = buffer.rope.len_lines() - 1;
+                        let last_line_text = buffer.get_line_text(last_line);
+                        let last_column = if last_line_text.ends_with('\n') {
+                            last_line_text.chars().count().saturating_sub(1)
+                        } else {
+                            last_line_text.chars().count()
+                        };
+                        return Some((last_line, last_column));
+                    } else {
+                        return Some((0, 0));
+                    }
                 }
                 
                 let line_text = buffer.get_line_text(line);
@@ -2036,8 +2064,15 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
                 } else {
                     line_text.chars().count()
                 };
-                let column = relative_x.min(line_content_len);
-                Some((line, column))
+                
+                // Account for horizontal scrolling and Unicode character widths
+                let visual_column = relative_x + self.horizontal_offset;
+                
+                // Convert visual column to character position using Unicode utilities
+                let column = crate::unicode_utils::visual_column_to_char_pos(&line_text, visual_column);
+                let safe_column = column.min(line_content_len);
+                
+                Some((line, safe_column))
             }
         } else {
             None
@@ -2112,10 +2147,47 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
                     
                     if segment_index < wrapped_segments.len() {
                         let (segment_text, start_col) = &wrapped_segments[segment_index];
-                        let segment_length = segment_text.chars().count();
-                        let column_in_segment = relative_x.min(segment_length);
-                        let actual_column = start_col + column_in_segment;
-                        return Some((logical_line, actual_column));
+                        
+                        // For continuation lines (not the first segment), the segment text includes
+                        // indentation that was added by wrap_line but isn't part of the original text
+                        let actual_column = if segment_index == 0 {
+                            // First segment - no added indentation
+                            let char_pos_in_segment = crate::unicode_utils::visual_column_to_char_pos(segment_text, relative_x);
+                            start_col + char_pos_in_segment
+                        } else {
+                            // Continuation line - segment has indent prepended
+                            // Calculate the visual width of the indent in the segment
+                            let segment_chars: Vec<char> = segment_text.chars().collect();
+                            let mut indent_visual_width = 0;
+                            let mut indent_char_count = 0;
+                            
+                            // Find where the indent ends in the segment
+                            for &ch in &segment_chars {
+                                if ch == ' ' || ch == '\t' {
+                                    indent_visual_width += if ch == '\t' { 4 } else { crate::unicode_utils::char_display_width(ch) };
+                                    indent_char_count += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                            
+                            if relative_x < indent_visual_width {
+                                // Click is within the indentation - map to start of actual content
+                                *start_col
+                            } else {
+                                // Click is after indentation - need to find position in actual content
+                                let content_part: String = segment_chars[indent_char_count..].iter().collect();
+                                let adjusted_visual_x = relative_x - indent_visual_width;
+                                let char_pos_in_content = crate::unicode_utils::visual_column_to_char_pos(&content_part, adjusted_visual_x);
+                                start_col + char_pos_in_content
+                            }
+                        };
+                        
+                        // Ensure we don't exceed the line length
+                        let max_column = line_text_for_display.chars().count();
+                        let safe_column = actual_column.min(max_column);
+                        
+                        return Some((logical_line, safe_column));
                     } else if wrapped_segments.is_empty() {
                         // Empty line
                         return Some((logical_line, 0));
@@ -2125,8 +2197,19 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
                 visual_lines_counted += segments_count;
             }
             
-            // Click was beyond the available content
-            None
+            // Click was beyond the available content - return EOF position
+            if buffer.rope.len_lines() > 0 {
+                let last_line = buffer.rope.len_lines() - 1;
+                let last_line_text = buffer.get_line_text(last_line);
+                let last_column = if last_line_text.ends_with('\n') {
+                    last_line_text.chars().count().saturating_sub(1)
+                } else {
+                    last_line_text.chars().count()
+                };
+                Some((last_line, last_column))
+            } else {
+                Some((0, 0))
+            }
         } else {
             None
         }
@@ -2161,12 +2244,26 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
     pub fn handle_regular_click(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config, visible_lines: usize) {
         if let Some((line, column)) = self.mouse_to_buffer_position(mouse_x, mouse_y, config) {
             if let Some(buffer) = self.current_buffer_mut() {
+                // Ensure line is within bounds
+                if line >= buffer.rope.len_lines() {
+                    return;
+                }
+                
+                // Get the actual line length and ensure column is within bounds
+                let line_text = buffer.get_line_text(line);
+                let max_column = if line_text.ends_with('\n') {
+                    line_text.chars().count().saturating_sub(1)
+                } else {
+                    line_text.chars().count()
+                };
+                let safe_column = column.min(max_column);
+                
                 // Clear any existing selection
                 buffer.cursor.clear_selection();
                 // Move cursor to click position
                 buffer.cursor.line = line;
-                buffer.cursor.column = column;
-                buffer.cursor.preferred_visual_column = column;
+                buffer.cursor.column = safe_column;
+                buffer.cursor.preferred_visual_column = safe_column;
                 self.adjust_viewport(config, visible_lines);
             }
         }
@@ -2176,14 +2273,28 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
     pub fn handle_shift_click(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config, visible_lines: usize) {
         if let Some((line, column)) = self.mouse_to_buffer_position(mouse_x, mouse_y, config) {
             if let Some(buffer) = self.current_buffer_mut() {
+                // Ensure line is within bounds
+                if line >= buffer.rope.len_lines() {
+                    return;
+                }
+                
+                // Get the actual line length and ensure column is within bounds
+                let line_text = buffer.get_line_text(line);
+                let max_column = if line_text.ends_with('\n') {
+                    line_text.chars().count().saturating_sub(1)
+                } else {
+                    line_text.chars().count()
+                };
+                let safe_column = column.min(max_column);
+                
                 // If no selection exists, start one from current cursor position
                 if !buffer.cursor.has_selection() {
                     buffer.cursor.start_selection();
                 }
                 // Move cursor to clicked position (extending selection)
                 buffer.cursor.line = line;
-                buffer.cursor.column = column;
-                buffer.cursor.preferred_visual_column = column;
+                buffer.cursor.column = safe_column;
+                buffer.cursor.preferred_visual_column = safe_column;
                 self.adjust_viewport(config, visible_lines);
             }
         }
@@ -2193,14 +2304,28 @@ fn move_cursor_up_visual(&mut self, content_width: usize, config: &Config, visib
     pub fn handle_mouse_drag(&mut self, mouse_x: u16, mouse_y: u16, config: &crate::config::Config, visible_lines: usize) {
         if let Some((line, column)) = self.mouse_to_buffer_position(mouse_x, mouse_y, config) {
             if let Some(buffer) = self.current_buffer_mut() {
+                // Ensure line is within bounds
+                if line >= buffer.rope.len_lines() {
+                    return;
+                }
+                
+                // Get the actual line length and ensure column is within bounds
+                let line_text = buffer.get_line_text(line);
+                let max_column = if line_text.ends_with('\n') {
+                    line_text.chars().count().saturating_sub(1)
+                } else {
+                    line_text.chars().count()
+                };
+                let safe_column = column.min(max_column);
+                
                 // If no selection exists yet, start one from the initial click position
                 if !buffer.cursor.has_selection() {
                     buffer.cursor.start_selection();
                 }
                 // Move cursor to current drag position (extending selection)
                 buffer.cursor.line = line;
-                buffer.cursor.column = column;
-                buffer.cursor.preferred_visual_column = column;
+                buffer.cursor.column = safe_column;
+                buffer.cursor.preferred_visual_column = safe_column;
                 self.adjust_viewport(config, visible_lines);
             }
         }

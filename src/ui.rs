@@ -6,7 +6,8 @@ use crate::{
     cursor::Position,
     editor::Editor, 
     syntax::TokenType,
-    text_utils::wrap_line
+    text_utils::wrap_line,
+    unicode_utils::{char_display_width, str_display_width}
 };
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
@@ -137,12 +138,26 @@ impl Ui {
             let lines: Vec<Line> = wrapped_lines.iter().map(|wl| {
                 // Apply horizontal offset only to non-virtual lines when word wrap is disabled
                 let (displayed_content, effective_horizontal_offset) = if !config.word_wrap && wl.logical_line != usize::MAX {
-                    // Apply horizontal scrolling
+                    // Apply horizontal scrolling with Unicode awareness
                     let chars: Vec<char> = wl.content.chars().collect();
-                    if editor.horizontal_offset >= chars.len() {
-                        (String::new(), editor.horizontal_offset) // Line is entirely scrolled off to the left
+                    if editor.horizontal_offset == 0 {
+                        (wl.content.clone(), 0)
                     } else {
-                        (chars[editor.horizontal_offset..].iter().collect(), editor.horizontal_offset)
+                        // Skip characters until we've scrolled past horizontal_offset visual columns
+                        let mut visual_col = 0;
+                        let mut char_idx = 0;
+                        for (i, &ch) in chars.iter().enumerate() {
+                            if visual_col >= editor.horizontal_offset {
+                                char_idx = i;
+                                break;
+                            }
+                            visual_col += char_display_width(ch);
+                        }
+                        if char_idx >= chars.len() {
+                            (String::new(), editor.horizontal_offset)
+                        } else {
+                            (chars[char_idx..].iter().collect(), editor.horizontal_offset)
+                        }
                     }
                 } else {
                     (wl.content.clone(), 0)
@@ -172,8 +187,10 @@ impl Ui {
                 let current_line_bg = config.theme.parse_color(&config.theme.colors.current_line_bg);
                 wrapped_lines.iter().zip(lines.into_iter()).map(|(wl, mut line)| {
                     if wl.logical_line == buffer.cursor.line && wl.logical_line != usize::MAX {
-                        // Calculate the total width of existing content
-                        let content_width: usize = line.spans.iter().map(|span| span.content.len()).sum();
+                        // Calculate the total visual width of existing content
+                        let content_width: usize = line.spans.iter()
+                            .map(|span| str_display_width(&span.content))
+                            .sum();
                         let viewport_width = content_area.width as usize;
                         
                         // Apply current line background to all spans in the line
@@ -577,7 +594,23 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
                     
                     // Check if cursor falls within this segment's range (including end position)
                     if cursor_col >= *start_col && cursor_col <= end_col {
-                        let visual_col = cursor_col - start_col;
+                        // Calculate visual column considering Unicode width and indentation
+                        let chars_before_cursor = cursor_col - start_col;
+                        
+                        // Check if this is a continuation line with indentation
+                        let indent_offset = if *start_col > 0 && config.word_wrap {
+                            // Count leading spaces/tabs in the wrapped content
+                            let wrapped_chars: Vec<char> = wrapped_content.chars().collect();
+                            wrapped_chars.iter().take_while(|&&c| c == ' ' || c == '\t').count()
+                        } else {
+                            0
+                        };
+                        
+                        // The cursor position in the wrapped line includes the indentation
+                        let cursor_pos_in_wrapped = indent_offset + chars_before_cursor;
+                        let line_before_cursor: String = wrapped_content.chars().take(cursor_pos_in_wrapped).collect();
+                        let visual_col = str_display_width(&line_before_cursor);
+                        
                         // Apply horizontal offset to cursor position when word wrap is disabled
                         if !config.word_wrap && editor.horizontal_offset > 0 {
                             if visual_col >= editor.horizontal_offset {
@@ -718,7 +751,23 @@ let virtual_lines_to_show = (-editor.viewport_line) as usize;
                 if logical_line == buffer.cursor.line {
                     let cursor_col = buffer.cursor.column;
                     if cursor_col >= *start_col && cursor_col <= end_col {
-                        let visual_col = cursor_col - start_col;
+                        // Calculate visual column considering Unicode width and indentation
+                        let chars_before_cursor = cursor_col - start_col;
+                        
+                        // Check if this is a continuation line with indentation
+                        let indent_offset = if *start_col > 0 {
+                            // Count leading spaces/tabs in the wrapped content
+                            let wrapped_chars: Vec<char> = wrapped_content.chars().collect();
+                            wrapped_chars.iter().take_while(|&&c| c == ' ' || c == '\t').count()
+                        } else {
+                            0
+                        };
+                        
+                        // The cursor position in the wrapped line includes the indentation
+                        let cursor_pos_in_wrapped = indent_offset + chars_before_cursor;
+                        let line_before_cursor: String = wrapped_content.chars().take(cursor_pos_in_wrapped).collect();
+                        let visual_col = str_display_width(&line_before_cursor);
+                        
                         let visual_line_idx = wrapped_lines.len() - 1;
                         cursor_visual_pos = Some((visual_col, visual_line_idx));
                     }

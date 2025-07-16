@@ -3,6 +3,7 @@
 // Cursor movement logic with word-wrap support
 
 use crate::text_utils::wrap_line;
+use crate::unicode_utils::{char_display_width, str_display_width, char_pos_to_visual_column, visual_column_to_char_pos};
 use ropey::Rope;
 
 #[derive(Debug, Clone)]
@@ -111,47 +112,8 @@ impl CursorMovement {
             &line_text
         };
         
-        let wrapped_segments = wrap_line(line_text_for_display, content_width);
-        
-        // Check if cursor is beyond the end of the line
-        if cursor.column >= line_text_for_display.chars().count() {
-            // Cursor is at or beyond EOL - use the last segment
-            if let Some((_, last_start)) = wrapped_segments.last() {
-                cursor.preferred_visual_column = cursor.column - last_start;
-            } else {
-                // Empty line
-                cursor.preferred_visual_column = cursor.column;
-            }
-            return;
-        }
-        
-        // Find which visual line segment the cursor is in
-        for (i, (_segment, start_pos)) in wrapped_segments.iter().enumerate() {
-            let segment_end = if i + 1 < wrapped_segments.len() {
-                wrapped_segments[i + 1].1
-            } else {
-                line_text_for_display.chars().count()
-            };
-            
-            // Use consistent boundary detection logic
-            let is_in_segment = if i == wrapped_segments.len() - 1 {
-                // Last segment: include the end position
-                cursor.column >= *start_pos && cursor.column <= segment_end
-            } else {
-                // Other segments: exclude the end position (it belongs to next segment)
-                cursor.column >= *start_pos && cursor.column < segment_end
-            };
-            
-            if is_in_segment {
-                // Calculate position within this visual line segment
-                let visual_column = cursor.column - start_pos;
-                cursor.preferred_visual_column = visual_column;
-                return;
-            }
-        }
-        
-        // Fallback: use the logical column as visual column
-        cursor.preferred_visual_column = cursor.column;
+        // Calculate the visual column for the current character position
+        cursor.preferred_visual_column = char_pos_to_visual_column(line_text_for_display, cursor.column);
     }
 
     /// Move cursor up with word-wrap awareness
@@ -381,30 +343,53 @@ impl CursorMovement {
     pub fn move_cursor_left(cursor: &mut Cursor, rope: &Rope) {
         if cursor.column > 0 {
             cursor.column -= 1;
+            // Update preferred visual column after moving
+            let line_text = get_line_text(rope, cursor.line);
+            let line_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            cursor.preferred_visual_column = char_pos_to_visual_column(line_for_display, cursor.column);
         } else if cursor.line > 0 {
             cursor.line -= 1;
             let line_text = get_line_text(rope, cursor.line);
             cursor.column = if line_text.ends_with('\n') {
-                line_text.len() - 1
+                line_text.chars().count() - 1
             } else {
-                line_text.len()
+                line_text.chars().count()
             };
+            // Update preferred visual column for end of line
+            let line_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            cursor.preferred_visual_column = char_pos_to_visual_column(line_for_display, cursor.column);
         }
     }
 
     pub fn move_cursor_right(cursor: &mut Cursor, rope: &Rope) {
         let line_text = get_line_text(rope, cursor.line);
         let line_content_len = if line_text.ends_with('\n') {
-            line_text.len() - 1
+            line_text.chars().count() - 1
         } else {
-            line_text.len()
+            line_text.chars().count()
         };
         
         if cursor.column < line_content_len {
             cursor.column += 1;
+            // Update preferred visual column after moving
+            let line_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
+            } else {
+                &line_text
+            };
+            cursor.preferred_visual_column = char_pos_to_visual_column(line_for_display, cursor.column);
         } else if cursor.line < rope.len_lines() - 1 {
             cursor.line += 1;
             cursor.column = 0;
+            cursor.preferred_visual_column = 0;
         }
     }
 
@@ -412,12 +397,14 @@ impl CursorMovement {
         if cursor.line > 0 {
             cursor.line -= 1;
             let line_text = get_line_text(rope, cursor.line);
-            let line_content_len = if line_text.ends_with('\n') {
-                line_text.len() - 1
+            let line_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
             } else {
-                line_text.len()
+                &line_text
             };
-            cursor.column = cursor.preferred_visual_column.min(line_content_len);
+            
+            // Convert preferred visual column to character position
+            cursor.column = visual_column_to_char_pos(line_for_display, cursor.preferred_visual_column);
         }
     }
 
@@ -425,12 +412,14 @@ impl CursorMovement {
         if cursor.line < rope.len_lines() - 1 {
             cursor.line += 1;
             let line_text = get_line_text(rope, cursor.line);
-            let line_content_len = if line_text.ends_with('\n') {
-                line_text.len() - 1
+            let line_for_display = if line_text.ends_with('\n') {
+                &line_text[..line_text.len()-1]
             } else {
-                line_text.len()
+                &line_text
             };
-            cursor.column = cursor.preferred_visual_column.min(line_content_len);
+            
+            // Convert preferred visual column to character position
+            cursor.column = visual_column_to_char_pos(line_for_display, cursor.preferred_visual_column);
         }
     }
 
@@ -442,11 +431,18 @@ impl CursorMovement {
     pub fn move_cursor_end(cursor: &mut Cursor, rope: &Rope) {
         let line_text = get_line_text(rope, cursor.line);
         cursor.column = if line_text.ends_with('\n') {
-            line_text.len() - 1
+            line_text.chars().count() - 1
         } else {
-            line_text.len()
+            line_text.chars().count()
         };
-        cursor.preferred_visual_column = cursor.column;
+        
+        // Update preferred visual column based on actual visual position
+        let line_for_display = if line_text.ends_with('\n') {
+            &line_text[..line_text.len()-1]
+        } else {
+            &line_text
+        };
+        cursor.preferred_visual_column = char_pos_to_visual_column(line_for_display, cursor.column);
     }
 }
 

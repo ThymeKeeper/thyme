@@ -9,6 +9,7 @@ mod events;
 mod syntax;
 mod text_utils;
 mod ui;
+mod unicode_utils;
 
 use anyhow::Result;
 use app::App;
