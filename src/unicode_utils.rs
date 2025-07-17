@@ -69,6 +69,11 @@ pub fn visual_column_to_char_pos(text: &str, visual_col: usize) -> usize {
     for ch in text.chars() {
         let ch_width = char_display_width(ch);
         
+        // If we've reached or passed the target column, stop
+        if current_col >= visual_col {
+            break;
+        }
+        
         // If the target column falls in the middle of a wide character,
         // we should position at the start of that character
         if current_col + ch_width > visual_col {
@@ -81,10 +86,6 @@ pub fn visual_column_to_char_pos(text: &str, visual_col: usize) -> usize {
         
         current_col += ch_width;
         char_pos += 1;
-        
-        if current_col >= visual_col {
-            break;
-        }
     }
     
     char_pos

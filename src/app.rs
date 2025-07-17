@@ -1004,6 +1004,27 @@ impl App {
     }
     
     fn handle_cursor_movement_left(&mut self, extend_selection: bool, content_width: usize) {
+        // First check if we have a selection and are not extending it
+        if !extend_selection {
+            if let Some(buffer) = self.editor.current_buffer() {
+                if let Some((start, _end)) = buffer.cursor.get_selection_range() {
+                    // Store the current preferred column before jumping
+                    let saved_preferred_column = buffer.cursor.preferred_visual_column;
+                    // Move cursor to the start of the selection
+                    if let Some(buffer) = self.editor.current_buffer_mut() {
+                        buffer.cursor.line = start.line;
+                        buffer.cursor.column = start.column;
+                        buffer.cursor.clear_selection();
+                        // Restore the preferred column - don't update it when jumping to selection boundary
+                        buffer.cursor.preferred_visual_column = saved_preferred_column;
+                    }
+                    self.editor.adjust_viewport(&self.config, self.calculate_visible_lines());
+                    return;
+                }
+            }
+        }
+        
+        // Normal movement logic
         if let Some(buffer) = self.editor.current_buffer_mut() {
             if extend_selection && !buffer.cursor.has_selection() {
                 buffer.cursor.start_selection();
@@ -1018,6 +1039,27 @@ impl App {
     
     
     fn handle_cursor_movement_right(&mut self, extend_selection: bool, content_width: usize) {
+        // First check if we have a selection and are not extending it
+        if !extend_selection {
+            if let Some(buffer) = self.editor.current_buffer() {
+                if let Some((_start, end)) = buffer.cursor.get_selection_range() {
+                    // Store the current preferred column before jumping
+                    let saved_preferred_column = buffer.cursor.preferred_visual_column;
+                    // Move cursor to the end of the selection
+                    if let Some(buffer) = self.editor.current_buffer_mut() {
+                        buffer.cursor.line = end.line;
+                        buffer.cursor.column = end.column;
+                        buffer.cursor.clear_selection();
+                        // Restore the preferred column - don't update it when jumping to selection boundary
+                        buffer.cursor.preferred_visual_column = saved_preferred_column;
+                    }
+                    self.editor.adjust_viewport(&self.config, self.calculate_visible_lines());
+                    return;
+                }
+            }
+        }
+        
+        // Normal movement logic
         if let Some(buffer) = self.editor.current_buffer_mut() {
             if extend_selection && !buffer.cursor.has_selection() {
                 buffer.cursor.start_selection();
@@ -1031,6 +1073,27 @@ impl App {
     }
     
     fn handle_cursor_movement_up(&mut self, extend_selection: bool, content_width: usize) {
+        // First check if we have a selection and are not extending it
+        if !extend_selection {
+            if let Some(buffer) = self.editor.current_buffer() {
+                if let Some((start, _end)) = buffer.cursor.get_selection_range() {
+                    // Store the current preferred column before jumping
+                    let saved_preferred_column = buffer.cursor.preferred_visual_column;
+                    // Move cursor to the start of the selection
+                    if let Some(buffer) = self.editor.current_buffer_mut() {
+                        buffer.cursor.line = start.line;
+                        buffer.cursor.column = start.column;
+                        buffer.cursor.clear_selection();
+                        // Restore the preferred column - don't update it when jumping to selection boundary
+                        buffer.cursor.preferred_visual_column = saved_preferred_column;
+                    }
+                    self.editor.adjust_viewport(&self.config, self.calculate_visible_lines());
+                    return;
+                }
+            }
+        }
+        
+        // Normal movement logic
         if let Some(buffer) = self.editor.current_buffer_mut() {
             if extend_selection && !buffer.cursor.has_selection() {
                 buffer.cursor.start_selection();
@@ -1042,6 +1105,27 @@ impl App {
     }
     
     fn handle_cursor_movement_down(&mut self, extend_selection: bool, content_width: usize) {
+        // First check if we have a selection and are not extending it
+        if !extend_selection {
+            if let Some(buffer) = self.editor.current_buffer() {
+                if let Some((_start, end)) = buffer.cursor.get_selection_range() {
+                    // Store the current preferred column before jumping
+                    let saved_preferred_column = buffer.cursor.preferred_visual_column;
+                    // Move cursor to the end of the selection
+                    if let Some(buffer) = self.editor.current_buffer_mut() {
+                        buffer.cursor.line = end.line;
+                        buffer.cursor.column = end.column;
+                        buffer.cursor.clear_selection();
+                        // Restore the preferred column - don't update it when jumping to selection boundary
+                        buffer.cursor.preferred_visual_column = saved_preferred_column;
+                    }
+                    self.editor.adjust_viewport(&self.config, self.calculate_visible_lines());
+                    return;
+                }
+            }
+        }
+        
+        // Normal movement logic
         if let Some(buffer) = self.editor.current_buffer_mut() {
             if extend_selection && !buffer.cursor.has_selection() {
                 buffer.cursor.start_selection();

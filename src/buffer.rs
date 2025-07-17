@@ -918,7 +918,9 @@ impl Buffer {
             
             // Convert preferred visual column to character position
             use crate::unicode_utils::visual_column_to_char_pos;
-            self.cursor.column = visual_column_to_char_pos(line_for_display, self.cursor.preferred_visual_column);
+            let new_column = visual_column_to_char_pos(line_for_display, self.cursor.preferred_visual_column);
+            // Ensure we don't go past the end of the line
+            self.cursor.column = new_column.min(line_for_display.chars().count());
         }
     }
 
@@ -934,7 +936,9 @@ impl Buffer {
             
             // Convert preferred visual column to character position
             use crate::unicode_utils::visual_column_to_char_pos;
-            self.cursor.column = visual_column_to_char_pos(line_for_display, self.cursor.preferred_visual_column);
+            let new_column = visual_column_to_char_pos(line_for_display, self.cursor.preferred_visual_column);
+            // Ensure we don't go past the end of the line
+            self.cursor.column = new_column.min(line_for_display.chars().count());
         }
     }
 

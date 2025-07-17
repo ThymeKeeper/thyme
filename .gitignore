@@ -1,1 +1,25 @@
-/target
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test and temporary files
+*.tmp
+*.temp
+test_*.md
+move_cursor_*.rs
+
+# Config directory (user-specific)
+# Uncomment if you don't want to track user configs
+# /config/
