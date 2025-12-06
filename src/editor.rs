@@ -434,12 +434,16 @@ impl Editor {
             Command::InsertTab => {
                 // Delete selection first if any
                 self.delete_selection();
-                
+
                 let cursor_before = self.cursor;
                 self.buffer.insert(self.cursor, "    ", cursor_before, self.cursor + 4);
                 self.cursor += 4;
                 self.modified = true;
                 self.preferred_column = None; // Clear preferred column
+
+                // Update syntax highlighting for the modified line
+                let line = self.buffer.byte_to_line(self.cursor);
+                self.syntax.line_modified(line);
             }
             
             Command::Backspace => {
@@ -1488,7 +1492,12 @@ impl Editor {
                 if let Some(ref mut sel_start) = self.selection_start {
                     *sel_start += selection_start_adjustment;
                 }
-                
+
+                // Mark all indented lines for syntax re-evaluation
+                for line_num in start_line..=end_line {
+                    self.syntax.line_modified(line_num);
+                }
+
                 self.modified = true;
             }
             
@@ -1550,7 +1559,12 @@ impl Editor {
                 if let Some(sel) = original_selection_start {
                     self.set_selection_start(sel.saturating_sub(selection_adjustment));
                 }
-                
+
+                // Mark all dedented lines for syntax re-evaluation
+                for line_num in start_line..=end_line {
+                    self.syntax.line_modified(line_num);
+                }
+
                 self.modified = true;
             }
             
